@@ -78,6 +78,17 @@ with sync_playwright() as p:
     pg.click('.st[data-i="0"] [data-a="del"]'); idle(); ok(nsteps() == 1, 'delete step')
     pg.click('#stClear'); idle(); ok(sig() == src_sig, 'clear returns to source')
 
+    # ---- reset to source (stack + decode view), undoable
+    pg.click('.fx[data-fx="noise"] .apply'); idle(); pg.click('.fx[data-fx="wave"] .apply'); idle()
+    pg.evaluate("""(()=>{const r=document.getElementById('dw');r.value=5;r.dispatchEvent(new Event('input',{bubbles:true}));})()"""); idle()
+    dirty = sig()
+    pg.click('#btnReset'); idle()
+    ok(sig() == src_sig and nsteps() == 0, 'reset to source clears stack + view')
+    ok(pg.evaluate("document.getElementById('dw').value") == '0', 'reset restores decode view UI')
+    pg.keyboard.press('Control+z'); idle(150)
+    ok(sig() == dirty and nsteps() == 2, 'undo reset restores stack + view')
+    pg.click('#btnReset'); idle()
+
     # ---- repeat-apply now differs (old bug)
     pg.click('.fx[data-fx="noise"] .apply'); idle(); a = sig()
     pg.click('.fx[data-fx="noise"] .apply'); idle(); b2 = sig()

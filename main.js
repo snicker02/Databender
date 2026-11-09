@@ -11,7 +11,7 @@ import { createTerrain } from './ui/terrain.js';
 import { createSelection } from './ui/selection.js';
 import { createVariations } from './ui/variations.js';
 
-export const VERSION = '2.0.0';
+export const VERSION = '2.0.1';
 const MAXDIM = 1200, UNDO_CAP = 100;
 const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d', { willReadFrequently: true });
@@ -175,7 +175,7 @@ function syncViewUI() {
 }
 
 // ---------- undo / redo ----------
-const snapshot = () => ({ src: S.src, fmt: S.fmt, steps: cloneSteps(S.steps) });
+const snapshot = () => ({ src: S.src, fmt: S.fmt, steps: cloneSteps(S.steps), view: { ...S.view } });
 function pushUndo() { S.undo.push(snapshot()); if (S.undo.length > UNDO_CAP) S.undo.shift(); S.redo = []; }
 function coalescedUndo() { const now = performance.now(); if (now - S.lastEditUndo > 700) pushUndo(); S.lastEditUndo = now; }
 function firstDiff(a, b) { let i = 0; const n = Math.min(a.length, b.length); while (i < n && JSON.stringify(a[i]) === JSON.stringify(b[i])) i++; return i; }
@@ -183,6 +183,7 @@ async function restore(snap) {
   const needBase = snap.src !== S.src || snap.fmt !== S.fmt;
   const from = needBase ? 0 : firstDiff(S.steps, snap.steps);
   S.steps = cloneSteps(snap.steps); stopEdit(false);
+  if (snap.view && JSON.stringify(snap.view) !== JSON.stringify(S.view)) { S.view = { ...snap.view }; syncViewUI(); renderMain(); }
   if (needBase) { S.src = snap.src; S.fmt = snap.fmt; syncFormatUI(); await rebase(); } else schedule(from);
   renderUI();
 }
@@ -242,7 +243,7 @@ async function setSource(src, msg) {
   if (S.src) pushUndo();
   if (S.src && !$('keepStack').checked) S.steps = [];
   S.src = src; S.sel = null; stopEdit(false); selection.set(null);
-  ['btnRandom', 'btnVar', 'btnAB', 'btnPng', 'btnRaw', 'btnBake', 'btn3D'].forEach(id => { $(id).disabled = false; });
+  ['btnRandom', 'btnVar', 'btnReset', 'btnAB', 'btnPng', 'btnRaw', 'btnBake', 'btn3D'].forEach(id => { $(id).disabled = false; });
   $('empty').hidden = true; $('meta').hidden = false; $('hexwrap').hidden = false; $('selhint').hidden = false;
   if (!terrain.isOn()) cv.hidden = false;
   $('rack').classList.remove('locked');
@@ -344,6 +345,15 @@ $('btnRandom').addEventListener('click', randomCorrupt);
 $('btnVar').addEventListener('click', () => { if (S.base) variations.open(); });
 $('btnUndo').addEventListener('click', undo);
 $('btnRedo').addEventListener('click', redo);
+$('btnReset').addEventListener('click', () => {
+  if (!S.base) return;
+  const viewDirty = JSON.stringify(S.view) !== JSON.stringify(VIEW_DEFAULT);
+  if (!S.steps.length && !viewDirty && !S.sel) { toast('already at source'); return; }
+  pushUndo();
+  S.steps = []; S.sel = null; stopEdit(false); selection.set(null);
+  if (viewDirty) { S.view = { ...VIEW_DEFAULT }; syncViewUI(); }
+  schedule(0); toast('reset to source');
+});
 const setAB = on => { if (!S.base || S.ab === on) return; S.ab = on; scopeEl.classList.toggle('ab', on); renderMain(); };
 $('btnAB').addEventListener('pointerdown', () => setAB(true));
 ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => $('btnAB').addEventListener(ev, () => setAB(false)));

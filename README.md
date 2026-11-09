@@ -22,7 +22,7 @@ GitHub Pages serves it as-is.
 - **Non-destructive stack.** Every Apply adds a step with its own params and seed.
   - Click a step to edit it live; the controls drive that step and it replays from there (cached).
   - Steps can be toggled, reordered, reseeded or deleted.
-  - Undo/redo covers stack edits, container switches, bakes and image loads.
+  - Undo/redo covers stack edits, decode view, container switches, bakes and image loads. **Reset to source** clears the stack, selection and decode view in one (undoable) click.
 - **Recipes.** Save the stack as JSON and load it onto any other image, with the same seeds and the same result. "Keep stack when loading" re-applies the current stack to each new image you drop.
 - **Selection mask.** Drag a rectangle on the image to limit new steps (or the step you're editing) to it.
   - Length-preserving effects are composited into the exact rectangle.
