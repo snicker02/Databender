@@ -4,1248 +4,180 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DATABENDER — raw byte image corruption</title>
-<style>
-  :root{
-    --void:#0d0f13; --panel:#15181e; --panel2:#1b1f27; --edge:#2a3038;
-    --ink:#cdd4dd; --mute:#737d8a; --dim:#4a525d;
-    --red:#ff2b4e; --cyan:#12e0ff; --amber:#ffb020; --green:#3ddc84;
-    --mono: ui-monospace,"SF Mono","Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace;
-    --sans: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    --rowh:20px;
-  }
-  *{box-sizing:border-box}
-  html,body{margin:0;background:var(--void);color:var(--ink);font-family:var(--sans);font-size:13px;-webkit-font-smoothing:antialiased}
-  body{padding:18px;max-width:1500px;margin:0 auto}
-  h1{margin:0;font-family:var(--mono);font-weight:700;font-size:26px;letter-spacing:.32em;text-transform:uppercase;line-height:1}
-  .split{position:relative;color:var(--ink)}
-  .split::before,.split::after{content:attr(data-t);position:absolute;left:0;top:0;pointer-events:none}
-  .split::before{color:var(--red);transform:translate(-1.5px,0);mix-blend-mode:screen;opacity:.85}
-  .split::after{color:var(--cyan);transform:translate(1.5px,0);mix-blend-mode:screen;opacity:.85}
-  header{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:16px;border-bottom:1px solid var(--edge);padding-bottom:14px}
-  header .sub{color:var(--mute);font-family:var(--mono);font-size:11px;letter-spacing:.12em}
-  .layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);gap:18px;align-items:start}
-  @media(max-width:920px){.layout{grid-template-columns:1fr}}
-
-  .scope{position:relative;background:
-      linear-gradient(45deg,#0a0c10 25%,transparent 25%),
-      linear-gradient(-45deg,#0a0c10 25%,transparent 25%),
-      linear-gradient(45deg,transparent 75%,#0a0c10 75%),
-      linear-gradient(-45deg,transparent 75%,#0a0c10 75%);
-    background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;
-    background-color:#111318;border:1px solid var(--edge);border-radius:2px;
-    min-height:280px;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:14px}
-  .scope canvas{max-width:100%;max-height:70vh;image-rendering:pixelated;display:block;box-shadow:0 0 0 1px #000,0 8px 40px rgba(0,0,0,.6)}
-  .scope canvas#gl{width:100%;height:min(70vh,520px);max-height:none;image-rendering:auto;box-shadow:none;cursor:grab;touch-action:none}
-  .scope canvas#gl.grabbing{cursor:grabbing}
-  .scope canvas[hidden]{display:none}
-  body.v3 .layout{grid-template-columns:1fr}
-  body.v3 .rack,body.v3 .hexwrap,body.v3 #meta,body.v3 #bar2d{display:none}
-  body.v3 .scope canvas#gl{height:min(80vh,760px)}
-  .scope .ticks{position:absolute;inset:0;pointer-events:none}
-  .scope .ticks span{position:absolute;width:12px;height:12px;border:1px solid var(--dim)}
-  .ticks .tl{top:6px;left:6px;border-right:0;border-bottom:0}
-  .ticks .tr{top:6px;right:6px;border-left:0;border-bottom:0}
-  .ticks .bl{bottom:6px;left:6px;border-right:0;border-top:0}
-  .ticks .br{bottom:6px;right:6px;border-left:0;border-top:0}
-  .empty{color:var(--mute);font-family:var(--mono);text-align:center;font-size:12px;line-height:1.7;letter-spacing:.04em}
-  .empty b{color:var(--ink)}
-  .scope.drag{outline:1px dashed var(--cyan);outline-offset:-6px}
-
-  .meta{display:flex;gap:14px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:8px}
-  .meta b{color:var(--ink);font-weight:600}
-
-  .bar{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-  button,.filebtn{font-family:var(--mono);font-size:11.5px;letter-spacing:.05em;color:var(--ink);
-    background:var(--panel2);border:1px solid var(--edge);padding:8px 12px;border-radius:2px;cursor:pointer;
-    text-transform:uppercase;transition:border-color .12s,color .12s,background .12s;user-select:none}
-  button:hover,.filebtn:hover{border-color:var(--cyan);color:#fff}
-  button:active{transform:translateY(1px)}
-  button.primary{border-color:var(--red);color:#fff;background:linear-gradient(180deg,#221016,#1a0d12)}
-  button.primary:hover{border-color:var(--red);box-shadow:0 0 0 1px var(--red) inset}
-  button.ghost{background:transparent}
-  button:disabled{opacity:.4;cursor:not-allowed;border-color:var(--edge);color:var(--mute)}
-  button:focus-visible,.filebtn:focus-visible,input:focus-visible{outline:2px solid var(--cyan);outline-offset:1px}
-
-  .rack{display:flex;flex-direction:column;gap:10px}
-  details.mod{background:var(--panel);border:1px solid var(--edge);border-radius:2px;overflow:hidden}
-  details.mod>summary{list-style:none;cursor:pointer;padding:10px 12px;font-family:var(--mono);font-size:11.5px;
-    letter-spacing:.14em;text-transform:uppercase;color:var(--ink);display:flex;align-items:center;gap:9px;
-    background:var(--panel2);user-select:none}
-  details.mod>summary::-webkit-details-marker{display:none}
-  details.mod>summary .dot{width:6px;height:6px;border-radius:50%;background:var(--dim);flex:none}
-  details.mod[open]>summary .dot{background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
-  details.mod>summary .k{margin-left:auto;color:var(--mute);font-size:10px;letter-spacing:.1em}
-  details.mod:hover>summary{color:#fff}
-  .modbody{padding:12px;display:flex;flex-direction:column;gap:12px}
-  .ctl{display:flex;flex-direction:column;gap:6px}
-  .ctl .lab{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--mono);font-size:11px;color:var(--mute);letter-spacing:.04em}
-  .ctl .lab b{color:var(--cyan);font-weight:600}
-  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:3px;background:var(--edge);border-radius:2px;outline:none}
-  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:2px;background:var(--ink);border:1px solid #000;cursor:pointer}
-  input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:2px;background:var(--ink);border:1px solid #000;cursor:pointer}
-  input[type=text],input[type=number],select{font-family:var(--mono);font-size:11.5px;background:var(--void);color:var(--ink);
-    border:1px solid var(--edge);border-radius:2px;padding:6px 8px;min-width:0}
-  input[type=text]:focus,input[type=number]:focus,select:focus{border-color:var(--cyan)}
-  .grow{flex:1}
-  .hint{font-family:var(--mono);font-size:10.5px;color:var(--dim);letter-spacing:.02em;line-height:1.5}
-  label.chk{display:flex;gap:7px;align-items:center;font-family:var(--mono);font-size:11px;color:var(--mute);cursor:pointer}
-  label.chk input{accent-color:var(--cyan)}
-  .seg{display:flex;border:1px solid var(--edge);border-radius:2px;overflow:hidden}
-  .seg button{border:0;border-radius:0;padding:6px 10px;background:transparent;flex:1}
-  .seg button.on{background:var(--panel2);color:#fff;box-shadow:inset 0 -2px 0 var(--cyan)}
-
-  .hexwrap{margin-top:18px;border:1px solid var(--edge);border-radius:2px;background:var(--panel)}
-  .hexhead{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--panel2);border-bottom:1px solid var(--edge);flex-wrap:wrap}
-  .hexhead .title{font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase}
-  .hexhead .spacer{flex:1}
-  .hexscroll{height:300px;overflow-y:auto;position:relative;font-family:var(--mono);font-size:12px;line-height:var(--rowh);background:var(--void)}
-  .hexinner{position:relative;width:100%}
-  .hxrow{position:absolute;left:0;right:0;height:var(--rowh);white-space:pre;display:flex;gap:14px;padding:0 12px}
-  .hxoff{color:var(--dim);flex:none}
-  .hxbytes{color:var(--ink);letter-spacing:.5px}
-  .hxbytes .by{cursor:text;padding:0 1px}
-  .hxbytes .by:hover{background:#20252e;color:#fff}
-  .hxbytes .hdr{color:var(--amber)}
-  .hxbytes .b0{color:var(--dim)}
-  .hxbytes .edit{background:var(--red);color:#fff;outline:none;border:0;width:1.7em;font:inherit;padding:0;text-transform:uppercase}
-  .hxascii{color:var(--mute);flex:none;letter-spacing:1px}
-  .hexscroll::-webkit-scrollbar{width:11px}
-  .hexscroll::-webkit-scrollbar-track{background:var(--void)}
-  .hexscroll::-webkit-scrollbar-thumb{background:var(--edge);border:2px solid var(--void)}
-  footer{margin-top:20px;color:var(--dim);font-family:var(--mono);font-size:10.5px;letter-spacing:.03em;line-height:1.7;border-top:1px solid var(--edge);padding-top:12px}
-  footer b{color:var(--mute)}
-  .toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--panel2);border:1px solid var(--cyan);
-    color:var(--ink);font-family:var(--mono);font-size:11.5px;padding:9px 14px;border-radius:2px;opacity:0;transition:.2s;pointer-events:none;z-index:50}
-  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
-</style>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230d0f13'/%3E%3Crect x='2' y='4' width='12' height='3' fill='%23ff2b4e'/%3E%3Crect x='4' y='9' width='10' height='3' fill='%2312e0ff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <header>
   <h1 class="split" data-t="DATABENDER">DATABENDER</h1>
-  <span class="sub">raw byte image corruption · bmp databending engine</span>
+  <span class="sub">raw byte image corruption · bmp + jpeg databending engine</span>
+  <span class="ver" id="ver"></span>
 </header>
 
 <div class="layout">
-  <div>
+  <div class="leftcol">
     <div class="scope" id="scope">
       <div class="ticks"><span class="tl"></span><span class="tr"></span><span class="bl"></span><span class="br"></span></div>
       <div class="empty" id="empty">
         <b>Drop an image here</b> — or use Load image.<br>
-        It's encoded to a real 24-bit BMP, then everything<br>
-        downstream edits its raw bytes directly.
+        It's encoded to a real BMP (or JPEG), then every effect<br>
+        edits its raw bytes. Drop a recipe .json to load a stack.
       </div>
       <canvas id="cv" width="10" height="10" hidden></canvas>
       <canvas id="gl" hidden></canvas>
+      <div class="selbox" id="selbox" hidden></div>
+      <div class="decfail" id="decfail" hidden>decode failed — showing last good frame</div>
     </div>
 
     <div class="meta" id="meta" hidden>
       <span><b id="mDim">–</b> px</span>
+      <span><b id="mFmt">BMP</b></span>
       <span>bytes <b id="mLen">–</b></span>
-      <span>data@ <b id="mOff">–</b></span>
+      <span id="mOffLab">data@ <b id="mOff">–</b></span>
       <span>Δ source <b id="mDelta">0</b></span>
+      <span>steps <b id="mSteps">0</b></span>
+      <span id="mSel" hidden>sel <b id="mSelV"></b></span>
     </div>
 
     <div class="bar">
-      <label class="filebtn">Load image<input id="file" type="file" accept="image/*,.bmp" hidden></label>
-      <button class="primary" id="btnRandom" disabled>◈ Corrupt (random)</button>
-      <button id="btnUndo" class="ghost" disabled>Undo</button>
-      <button id="btnReset" class="ghost" disabled>Reset to source</button>
+      <label class="filebtn">Load image<input id="file" type="file" accept="image/*,.bmp,.jpg,.jpeg,.json" hidden></label>
+      <button class="primary" id="btnRandom" disabled title="Add 2–4 random steps (R)">◈ Corrupt (random)</button>
+      <button id="btnVar" disabled title="3×3 grid of alternatives (V)">▦ Variations</button>
+      <button id="btnUndo" class="ghost" disabled title="Ctrl+Z">Undo</button>
+      <button id="btnRedo" class="ghost" disabled title="Ctrl+Shift+Z">Redo</button>
+      <button id="btnAB" class="ghost" disabled title="Hold to see the source (or hold \)">◐ Hold: source</button>
       <button id="btnPng" class="ghost" disabled>Save PNG</button>
-      <button id="btnBmp" class="ghost" disabled>Save .bmp</button>
+      <button id="btnRaw" class="ghost" disabled>Save .bmp</button>
+      <button id="btnBake" class="ghost" disabled title="Current result becomes the new source; stack clears">Bake</button>
       <button id="btn3D" class="ghost" disabled>▚ 3D terrain</button>
     </div>
-    <div class="bar" id="bar2d" style="margin-top:8px">
-      <label class="chk"><input type="checkbox" id="protect" checked> protect header (safe zone)</label>
-      <label class="chk"><input type="checkbox" id="trustdims"> trust header dimensions</label>
-      <label class="chk"><input type="checkbox" id="live" checked> live re-render</label>
-    </div>
+    <div class="hint selhint" id="selhint" hidden>Drag on the image to limit new steps to a rectangle · click to clear · Esc</div>
 
-    <div id="d3bar" hidden style="margin-top:10px;border:1px solid var(--edge);border-radius:2px;background:var(--panel)">
-      <div class="hexhead" style="border-bottom:1px solid var(--edge)">
+    <div id="d3bar" class="panel" hidden>
+      <div class="hexhead">
         <span class="title split" data-t="TERRAIN">TERRAIN</span>
         <span class="hint">drag orbit · shift-drag pan · scroll zoom · brightness = height</span>
         <span class="spacer"></span>
         <button id="d3save">⤓ Save PNG</button>
         <button id="d3reset">Reset view</button>
       </div>
-      <div class="modbody" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div class="ctl">
-          <div class="lab">Height source</div>
-          <div class="seg" id="d3src">
-            <button class="on" data-v="lum">Lum</button><button data-v="r">R</button><button data-v="g">G</button><button data-v="b">B</button>
-          </div>
-        </div>
-        <div class="ctl">
-          <div class="lab">Render</div>
-          <div class="seg" id="d3mode">
-            <button class="on" data-v="solid">Solid</button><button data-v="wire">Wire</button><button data-v="points">Points</button><button data-v="blocks">Blocks</button>
-          </div>
-        </div>
-        <div class="ctl">
-          <div class="lab">Height <b id="d3zV">35%</b></div>
-          <input type="range" id="d3z" min="0" max="120" value="35">
-        </div>
-        <div class="ctl">
-          <div class="lab">Resolution <b id="d3rV">140</b></div>
-          <input type="range" id="d3res" min="40" max="220" value="140" step="4">
-        </div>
-        <div class="ctl">
-          <div class="lab">Smooth <b id="d3bV">0</b></div>
-          <input type="range" id="d3blur" min="0" max="12" value="0">
-        </div>
-        <div class="ctl">
-          <div class="lab">Colour</div>
-          <div class="seg" id="d3col">
-            <button class="on" data-v="image">Image</button><button data-v="height">Height</button>
-          </div>
-        </div>
-        <div class="ctl" style="justify-content:end">
-          <label class="chk"><input type="checkbox" id="d3auto"> auto-rotate</label>
-        </div>
+      <div class="modbody grid2">
+        <div class="ctl"><div class="lab">Height source</div>
+          <div class="seg" id="d3src"><button class="on" data-v="lum">Lum</button><button data-v="r">R</button><button data-v="g">G</button><button data-v="b">B</button></div></div>
+        <div class="ctl"><div class="lab">Render</div>
+          <div class="seg" id="d3mode"><button class="on" data-v="solid">Solid</button><button data-v="wire">Wire</button><button data-v="points">Points</button><button data-v="blocks">Blocks</button></div></div>
+        <div class="ctl"><div class="lab">Height <b id="d3zV">35%</b></div><input type="range" id="d3z" min="0" max="120" value="35"></div>
+        <div class="ctl"><div class="lab">Resolution <b id="d3rV">140</b></div><input type="range" id="d3res" min="40" max="220" value="140" step="4"></div>
+        <div class="ctl"><div class="lab">Smooth <b id="d3bV">0</b></div><input type="range" id="d3blur" min="0" max="12" value="0"></div>
+        <div class="ctl"><div class="lab">Colour</div>
+          <div class="seg" id="d3col"><button class="on" data-v="image">Image</button><button data-v="height">Height</button></div></div>
+        <div class="ctl" style="justify-content:end"><label class="chk"><input type="checkbox" id="d3auto"> auto-rotate</label></div>
       </div>
+    </div>
+
+    <div class="hexwrap" id="hexwrap" hidden>
+      <div class="hexhead">
+        <span class="title split" data-t="RAW FEED">RAW FEED</span>
+        <span class="hint">result bytes · click a byte to edit (adds a step) · enter commits</span>
+        <span class="spacer"></span>
+        <input type="text" id="goto" placeholder="offset (hex)" style="width:110px">
+        <button id="gotoBtn">Go</button>
+        <button id="jumpPix">Jump to pixels</button>
+      </div>
+      <div class="hexscroll" id="hexscroll"><div class="hexinner" id="hexinner"></div></div>
     </div>
   </div>
 
-  <div class="rack" id="rack" aria-disabled="true" style="opacity:.45;pointer-events:none">
+  <div class="rack" id="rack">
+    <details class="mod" open id="stackMod">
+      <summary><span class="dot"></span>Stack<span class="k" id="stackK">0 steps</span></summary>
+      <div class="modbody">
+        <div class="stack" id="stack"></div>
+        <div class="row">
+          <button id="stSave" class="grow">Save recipe</button>
+          <label class="filebtn grow">Load recipe<input id="stLoad" type="file" accept=".json,application/json" hidden></label>
+        </div>
+        <div class="row">
+          <button id="stReseed" class="grow" title="New seeds for every step">↻ Reseed all</button>
+          <button id="stClear" class="grow">Clear stack</button>
+        </div>
+        <label class="chk"><input type="checkbox" id="keepStack" checked> keep stack when loading a new image</label>
+      </div>
+    </details>
 
     <details class="mod" open>
-      <summary><span class="dot"></span>Global<span class="k">seed / rng</span></summary>
+      <summary><span class="dot"></span>Container<span class="k">format · decode</span></summary>
+      <div class="modbody">
+        <div class="ctl">
+          <div class="lab">Container</div>
+          <div class="seg" id="fmtSeg"><button class="on" data-v="bmp">BMP · raw pixels</button><button data-v="jpeg">JPEG · compressed</button></div>
+        </div>
+        <label class="chk"><input type="checkbox" id="protect" checked> protect header (safe zone)</label>
+
+        <div id="jpegOpts" hidden class="modbody sub">
+          <div class="ctl"><div class="lab">JPEG quality <b id="jqV">80</b></div><input type="range" id="jq" min="5" max="100" value="80"></div>
+          <label class="chk" id="jrawWrap" hidden><input type="checkbox" id="jraw" checked> use the original file's JPEG bytes</label>
+          <label class="chk"><input type="checkbox" id="jsafe" checked> marker-safe decode (neutralize stray FF)</label>
+          <div class="hint">The header and Huffman/quant tables are protected; effects hit the entropy-coded scan. Tiny edits go a long way — pixel (px) effects are off in this mode. Selections map to a proportional slice of the scan.</div>
+        </div>
+
+        <div id="bmpOpts" class="modbody sub">
+          <div class="lab" style="margin-bottom:-4px">Decode as <span class="hint">(view only — raw-import shears)</span></div>
+          <div class="ctl"><div class="lab">Width Δ px <b id="dwV">0</b></div><input type="range" id="dw" min="-64" max="64" value="0"></div>
+          <div class="row">
+            <select id="dfmt" class="grow">
+              <option value="bgr24">BGR 24</option><option value="rgb24">RGB 24</option><option value="bgra32">BGRA 32</option>
+              <option value="gray8">Gray 8</option><option value="rgb565">RGB 565</option>
+            </select>
+            <button id="dReset">Reset view</button>
+          </div>
+          <div class="ctl"><div class="lab">Byte nudge <b id="dnV">0</b></div><input type="range" id="dnudge" min="0" max="63" value="0"></div>
+          <div class="row">
+            <label class="chk"><input type="checkbox" id="dpad" checked> row padding</label>
+            <label class="chk"><input type="checkbox" id="dflip" checked> bottom-up</label>
+            <label class="chk"><input type="checkbox" id="dfill"> height fills bytes</label>
+            <label class="chk"><input type="checkbox" id="trustdims"> trust header dims</label>
+          </div>
+          <div class="hint">Bake to freeze a decode view into a new source.</div>
+        </div>
+      </div>
+    </details>
+
+    <details class="mod">
+      <summary><span class="dot"></span>Seed<span class="k">rng</span></summary>
       <div class="modbody">
         <div class="ctl">
           <div class="lab">Seed <b id="seedVal">1337</b></div>
-          <div class="row">
-            <input type="number" id="seed" class="grow" value="1337" min="0" step="1">
-            <button id="seedRnd">↻ random</button>
-          </div>
-          <div class="hint">Random effects are reproducible for a given seed.</div>
+          <div class="row"><input type="number" id="seed" class="grow" value="1337" min="0" step="1"><button id="seedRnd">↻ random</button></div>
+          <div class="hint">New steps draw their seeds from this. Each step keeps its own seed, so recipes replay exactly. Re-entering a seed restarts its sequence.</div>
         </div>
       </div>
     </details>
 
-    <details class="mod">
-      <summary><span class="dot"></span>Noise<span class="k">byte scramble</span></summary>
-      <div class="modbody">
-        <div class="ctl">
-          <div class="lab">Density <b id="noiseV">3%</b></div>
-          <input type="range" id="noiseAmt" min="0" max="100" value="3">
-        </div>
-        <button data-fx="noise">Apply noise</button>
-        <div class="hint">Replaces a fraction of bytes with random values.</div>
-      </div>
-    </details>
-
-    <details class="mod">
-      <summary><span class="dot"></span>Bit ops<span class="k">xor · rotate</span></summary>
-      <div class="modbody">
-        <div class="ctl">
-          <div class="lab">Bit rotate <b id="bitV">1</b></div>
-          <input type="range" id="bitAmt" min="1" max="7" value="1">
-          <button data-fx="bitrot">Rotate bits</button>
-        </div>
-        <div class="ctl">
-          <div class="lab">XOR key <b>hex or text</b></div>
-          <div class="row">
-            <input type="text" id="xorKey" class="grow" placeholder="ff  ·  a4c1  ·  glitch" value="ff">
-            <button data-fx="xor">XOR</button>
-          </div>
-          <div class="hint">Hex pairs are read as bytes; other text is used verbatim as the key.</div>
-        </div>
-        <button data-fx="invert">Invert (negative)</button>
-        <div class="ctl">
-          <div class="lab">Bit crush <b id="bcV">3</b> bits</div>
-          <input type="range" id="bcAmt" min="1" max="7" value="3">
-          <button data-fx="bitcrush">Crush / posterize</button>
-        </div>
-        <div class="ctl">
-          <div class="lab">Byte add <b id="baV">64</b></div>
-          <input type="range" id="baAmt" min="-255" max="255" value="64">
-          <button data-fx="byteadd">Add / cycle</button>
-          <div class="hint">Wrapping byte math — solarizes and cycles colors.</div>
-        </div>
-        <div class="ctl">
-          <div class="lab">Dither <b id="ditV">4</b> levels</div>
-          <input type="range" id="ditAmt" min="2" max="8" value="4">
-          <button data-fx="dither">Ordered dither</button>
-          <div class="hint">Bayer posterize — retro halftone banding, keeps colour.</div>
-        </div>
-        <button data-fx="emboss">Emboss (relief edges)</button>
-        <div class="ctl">
-          <div class="lab">Sine bands amp <b id="sbV">40</b> · freq <b id="sfV">0.20</b></div>
-          <input type="range" id="sbAmt" min="0" max="128" value="40">
-          <input type="range" id="sbFreq" min="1" max="150" value="20">
-          <button data-fx="sinebands">Sine bands</button>
-          <div class="hint">Modulates pixel values by position — rolling colour interference.</div>
-        </div>
-      </div>
-    </details>
-
-    <details class="mod">
-      <summary><span class="dot"></span>Displace<span class="k">shift · sort · wave</span></summary>
-      <div class="modbody">
-        <div class="ctl">
-          <div class="lab">Byte shift <b id="shiftV">1</b></div>
-          <input type="range" id="shiftAmt" min="1" max="30" value="1">
-          <button data-fx="shift">Shift / recolor</button>
-          <div class="hint">Rotates the byte stream — cycles BGR and drags the frame.</div>
-        </div>
-        <div class="ctl">
-          <div class="lab">Sort window <b id="sortV">64</b></div>
-          <input type="range" id="sortAmt" min="4" max="1024" value="64" step="4">
-          <button data-fx="sort">Sort bytes</button>
-          <div class="hint">Raw byte sort desaturates toward gray — for colour, use Pixel sort below.</div>
-        </div>
-        <button data-fx="reverse">Reverse region</button>
-        <div class="ctl">
-          <div class="lab">Wave amp <b id="waV">8</b> · freq <b id="wfV">0.30</b></div>
-          <input type="range" id="waAmt" min="0" max="60" value="8">
-          <input type="range" id="wfAmt" min="1" max="200" value="30">
-          <button data-fx="wave">Wave warp</button>
-          <div class="hint">Smooth sine displacement per row.</div>
-        </div>
-        <div class="ctl">
-          <div class="lab">Smear <b id="smV">50%</b></div>
-          <input type="range" id="smAmt" min="0" max="100" value="50">
-          <button data-fx="datasmear">Data smear</button>
-          <div class="hint">Holds and repeats pixels — horizontal melt streaks.</div>
-        </div>
-        <div class="ctl">
-          <div class="lab">Interlace <b id="ilV">6</b> px</div>
-          <input type="range" id="ilAmt" min="0" max="40" value="6">
-          <button data-fx="interlace">Interlace tear</button>
-          <div class="hint">Even/odd rows pushed opposite ways — VHS tearing.</div>
-        </div>
-        <div class="ctl">
-          <div class="lab">Ghost shift <b id="ghV">10</b> px · opacity <b id="goV">50%</b></div>
-          <input type="range" id="ghAmt" min="1" max="80" value="10">
-          <input type="range" id="ghOpac" min="0" max="100" value="50">
-          <button data-fx="ghost">Ghost / motion trail</button>
-          <div class="hint">Blends an offset copy over the image.</div>
-        </div>
-      </div>
-    </details>
-
-    <details class="mod">
-      <summary><span class="dot"></span>Channels<span class="k">bgr targeting</span></summary>
-      <div class="modbody">
-        <div class="ctl">
-          <div class="lab">Target</div>
-          <div class="seg" id="chanSeg">
-            <button data-ch="0">Blue</button><button data-ch="1">Green</button><button class="on" data-ch="2">Red</button>
-          </div>
-        </div>
-        <div class="ctl">
-          <div class="lab">Amount <b id="chanV">40%</b></div>
-          <input type="range" id="chanAmt" min="0" max="100" value="40">
-        </div>
-        <button data-fx="channel">Corrupt channel</button>
-        <div class="hint">Best with header protected — keeps BGR alignment.</div>
-        <div class="ctl">
-          <div class="lab">RGB shift <b id="rgbV">6</b> px</div>
-          <div class="row">
-            <select id="rgbChSel">
-              <option value="2" selected>Red</option><option value="1">Green</option><option value="0">Blue</option>
-            </select>
-            <input type="range" id="rgbAmt" min="-40" max="40" value="6" class="grow">
-          </div>
-          <button data-fx="rgbshift">Split channel</button>
-          <div class="hint">Offsets one channel — chromatic aberration.</div>
-        </div>
-        <div class="ctl">
-          <div class="lab">Channel swap</div>
-          <div class="row">
-            <select id="swapSel" class="grow">
-              <option value="rb" selected>R ↔ B</option><option value="rg">R ↔ G</option><option value="gb">G ↔ B</option><option value="rot">Rotate R→G→B</option>
-            </select>
-            <button data-fx="channelswap">Swap</button>
-          </div>
-        </div>
-        <div class="ctl">
-          <div class="lab">Hue rotate <b id="hueV">120</b>°</div>
-          <input type="range" id="hueAmt" min="0" max="360" value="120">
-          <button data-fx="huerotate">Rotate hue</button>
-          <div class="hint">Continuous colour rotation — keeps structure.</div>
-        </div>
-      </div>
-    </details>
-
-    <details class="mod">
-      <summary><span class="dot"></span>Pixel sort<span class="k">brightness · keeps colour</span></summary>
-      <div class="modbody">
-        <div class="ctl">
-          <div class="lab">Amount <b id="psV">60%</b></div>
-          <input type="range" id="psAmt" min="0" max="100" value="60">
-          <div class="hint">Higher sorts more. Adapts to the image's own brightness range, so it works on dark shots too.</div>
-        </div>
-        <div class="ctl">
-          <div class="lab">Direction</div>
-          <div class="seg" id="psSeg">
-            <button class="on" data-v="0">Horizontal</button><button data-v="1">Vertical</button>
-          </div>
-        </div>
-        <button data-fx="pixelsort">Pixel sort</button>
-      </div>
-    </details>
-
-    <details class="mod">
-      <summary><span class="dot"></span>Find / replace<span class="k">byte patterns</span></summary>
-      <div class="modbody">
-        <div class="ctl">
-          <div class="row"><span class="lab" style="width:44px">find</span><input type="text" id="frFind" class="grow" placeholder="hex, e.g. ff00" value="00"></div>
-          <div class="row"><span class="lab" style="width:44px">with</span><input type="text" id="frRepl" class="grow" placeholder="hex, e.g. ff" value="ff"></div>
-          <button data-fx="findrepl">Replace all</button>
-          <div class="hint">Unequal lengths cascade a diagonal shear through the frame.</div>
-        </div>
-      </div>
-    </details>
-
-    <details class="mod">
-      <summary><span class="dot"></span>Structural<span class="k">shear · echo · move</span></summary>
-      <div class="modbody">
-        <div class="ctl">
-          <div class="lab">Intensity <b id="strV">50%</b></div>
-          <input type="range" id="strAmt" min="1" max="100" value="50">
-        </div>
-        <div class="row">
-          <button data-fx="echo" class="grow">Chunk echo</button>
-          <button data-fx="move" class="grow">Chunk move</button>
-        </div>
-        <div class="row">
-          <button data-fx="rowshift" class="grow">Row jitter (wave)</button>
-          <button data-fx="carve" class="grow">Carve bytes</button>
-        </div>
-        <button data-fx="rowstutter">Row stutter (datamosh freeze)</button>
-        <button data-fx="sliceshuffle">Slice shuffle</button>
-        <button data-fx="blockshuffle">Block shuffle (mosaic)</button>
-        <div class="hint">These change file length — the signature databending tears. Turn off "protect header" to reach the whole file.</div>
-      </div>
-    </details>
-
-    <details class="mod">
-      <summary><span class="dot"></span>Chunk (manual)<span class="k">move · rotate · carve</span></summary>
-      <div class="modbody">
-        <div class="ctl">
-          <div class="lab">Position <b id="coV">25%</b></div>
-          <input type="range" id="chunkOff" min="0" max="100" value="25">
-        </div>
-        <div class="ctl">
-          <div class="lab">Size <b id="clV">8%</b></div>
-          <input type="range" id="chunkLen" min="1" max="40" value="8">
-        </div>
-        <div class="ctl">
-          <div class="lab">Destination <b id="cdV">60%</b></div>
-          <input type="range" id="chunkDst" min="0" max="100" value="60">
-        </div>
-        <div class="ctl">
-          <div class="lab">Rotate chunk <b id="crV">25%</b></div>
-          <input type="range" id="chunkRot" min="-100" max="100" value="25">
-        </div>
-        <div class="row">
-          <button data-fx="chunkmove" class="grow">Move</button>
-          <button data-fx="chunkecho" class="grow">Echo</button>
-        </div>
-        <div class="row">
-          <button data-fx="chunkrotate" class="grow">Rotate</button>
-          <button data-fx="chunkreverse" class="grow">Reverse</button>
-          <button data-fx="chunkcarve" class="grow">Carve</button>
-        </div>
-        <div class="row">
-          <span class="hint grow" id="chunkRead">src – → –</span>
-          <button id="chunkShow">Show in hex</button>
-        </div>
-        <div class="hint">Position/Size/Destination are % of the editable region. Move & Carve keep or cut the exact chunk; Rotate spins its bytes in place.</div>
-      </div>
-    </details>
-
+    <div id="fxRack"></div>
   </div>
 </div>
 
-<div class="hexwrap" id="hexwrap" hidden>
-  <div class="hexhead">
-    <span class="title split" data-t="RAW FEED">RAW FEED</span>
-    <span class="hint" id="hexInfo">click any byte to edit · enter to commit</span>
-    <span class="spacer"></span>
-    <input type="text" id="goto" placeholder="offset (hex)" style="width:110px">
-    <button id="gotoBtn">Go</button>
-    <button id="jumpPix">Jump to pixels</button>
-  </div>
-  <div class="hexscroll" id="hexscroll"><div class="hexinner" id="hexinner"></div></div>
-</div>
-
-<footer id="footer" hidden>
-  Workflow: load → stack effects or hand-edit bytes → <b>Save .bmp</b> to keep the real corrupted file, then <b>Load</b> that .bmp back in to keep bending it (PNG export re-encodes clean). Header is protected by default so the file always decodes; the decoder is custom and tolerant, so broken byte streams shear instead of failing.
+<footer id="footer">
+  <b>Workflow:</b> load → apply effects (each becomes a step) → click a step to tweak it live, toggle or reorder → <b>Save .bmp/.jpg</b> keeps the real corrupted file, <b>Save recipe</b> keeps the stack to reuse on other images.
+  Keys: <b>R</b> random · <b>V</b> variations · <b>\</b> hold for source · <b>Ctrl+Z / Ctrl+Shift+Z</b> undo/redo · <b>Esc</b> clear selection / stop editing.
 </footer>
 
+<div class="voverlay" id="vover" hidden>
+  <div class="vpanel">
+    <div class="hexhead">
+      <span class="title split" data-t="VARIATIONS">VARIATIONS</span>
+      <div class="seg vmode"><button data-v="extend" class="on">Extend current</button><button data-v="reseed">Reseed stack</button><button data-v="fresh">Fresh stack</button></div>
+      <span class="spacer"></span>
+      <span class="hint vstatus"></span>
+      <button class="vregen">↻ Regenerate</button>
+      <button class="vclose">Close</button>
+    </div>
+    <div class="vgrid"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
-
-<script>
-"use strict";
-(function(){
-  const MAXDIM=1200, UNDO_CAP=12, ROWH=20, BPR=16;
-  const $=id=>document.getElementById(id);
-  const cv=$('cv'), ctx=cv.getContext('2d');
-
-  const state={
-    bytes:null, source:null, width:0, height:0, dataOffset:54,
-    seed:1337, protect:true, trustDims:false, live:true,
-    chan:2, editing:null, undo:[], psVert:false, rgbCh:2, swapMode:'rb',
-    chunkOff:0.25, chunkLen:0.08, chunkDst:0.6, chunkRot:25,
-    view3D:{on:false,gl:null,prog:null,loc:{},buf:{},triCount:0,lineCount:0,vertCount:0,
-      az:0.7,el:0.6,rad:1.8,tx:0,ty:0,tz:0,zScale:0.35,source:'lum',res:140,mode:'solid',colour:'image',blur:0,auto:false,raf:0,drag:null,dirty:true,blockCount:0}
-  };
-  let SILENT=false;
-
-  const clamp=(v,a,b)=>v<a?a:v>b?b:v;
-  function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
-  function hashStr(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
-  const rngFor=name=>mulberry32(((state.seed>>>0)^hashStr(name))>>>0);
-  function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1600);}
-  function u32(b,o){return (b[o]|b[o+1]<<8|b[o+2]<<16|b[o+3]<<24)>>>0;}
-  function i32(b,o){return (b[o]|b[o+1]<<8|b[o+2]<<16|b[o+3]<<24);}
-  function parseHex(str){const c=(str||'').replace(/[^0-9a-fA-F]/g,'');const o=[];for(let i=0;i+2<=c.length;i+=2)o.push(parseInt(c.substr(i,2),16));return o;}
-  function keyToBytes(str){
-    str=(str||'').trim();
-    const compact=str.replace(/\s/g,'');
-    if(/^[0-9a-fA-F]+$/.test(compact)&&compact.length%2===0&&compact.length>0){const h=parseHex(compact);if(h.length)return h;}
-    const o=[];for(let i=0;i<str.length;i++)o.push(str.charCodeAt(i)&255);
-    return o.length?o:[0xff];
-  }
-
-  function imageDataToBMP(img){
-    const w=img.width,h=img.height,data=img.data;
-    const pad=(4-((w*3)%4))%4, padded=w*3+pad, size=54+padded*h;
-    const b=new Uint8Array(size), dv=new DataView(b.buffer);
-    b[0]=0x42;b[1]=0x4D;
-    dv.setUint32(2,size,true); dv.setUint32(10,54,true);
-    dv.setUint32(14,40,true); dv.setInt32(18,w,true); dv.setInt32(22,h,true);
-    dv.setUint16(26,1,true); dv.setUint16(28,24,true);
-    dv.setUint32(30,0,true); dv.setUint32(34,padded*h,true);
-    dv.setInt32(38,2835,true); dv.setInt32(42,2835,true);
-    for(let y=0;y<h;y++){
-      const srcY=h-1-y, row=54+y*padded;
-      for(let x=0;x<w;x++){const i=(srcY*w+x)*4,o=row+x*3;b[o]=data[i+2];b[o+1]=data[i+1];b[o+2]=data[i];}
-    }
-    return b;
-  }
-
-  function decodeToCanvas(){
-    const bytes=state.bytes; if(!bytes)return;
-    let W=state.width,H=state.height;
-    if(state.trustDims&&bytes.length>=26){W=clamp(i32(bytes,18)||1,1,2048);H=clamp(Math.abs(i32(bytes,22))||1,1,2048);}
-    const pad=(4-((W*3)%4))%4, len=bytes.length;
-    let start=bytes.length>=14?u32(bytes,10):54;
-    if(len>0){start=((start%len)+len)%len; if(len-start<W*3)start=0;} else start=0;
-    if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H;}
-    const img=ctx.createImageData(W,H), d=img.data; let p=start;
-    for(let y=0;y<H;y++){
-      const outY=H-1-y, base=outY*W*4;
-      for(let x=0;x<W;x++){
-        const b0=p<len?bytes[p]:0, g0=p+1<len?bytes[p+1]:0, r0=p+2<len?bytes[p+2]:0; p+=3;
-        const oi=base+x*4; d[oi]=r0; d[oi+1]=g0; d[oi+2]=b0; d[oi+3]=255;
-      }
-      p+=pad;
-    }
-    ctx.putImageData(img,0,0);
-  }
-
-  function pushUndo(){state.undo.push(state.bytes.slice());if(state.undo.length>UNDO_CAP)state.undo.shift();$('btnUndo').disabled=false;}
-  function commit(newBytes,opts){
-    if(SILENT){state.bytes=newBytes;return;}
-    if(!opts||opts.undo!==false)pushUndo();
-    state.bytes=newBytes; refresh();
-  }
-  function refresh(){if(state.live)decodeToCanvas();renderMeta();renderHex();updateChunkReadout();if(state.view3D.on)state.view3D.dirty=true;}
-  function renderMeta(){
-    if(!state.bytes)return;
-    $('mDim').textContent=state.width+'×'+state.height;
-    $('mLen').textContent=state.bytes.length.toLocaleString();
-    const start=state.bytes.length>=14?u32(state.bytes,10):54;
-    $('mOff').textContent='0x'+start.toString(16);
-    const d=state.bytes.length-(state.source?state.source.length:state.bytes.length);
-    $('mDelta').textContent=(d>=0?'+':'')+d;
-  }
-  function region(){return state.protect?[state.dataOffset,state.bytes.length]:[0,state.bytes.length];}
-
-  function afterLoad(){
-    state.undo=[]; $('btnUndo').disabled=true;
-    ['btnRandom','btnReset','btnPng','btnBmp','btn3D'].forEach(id=>$(id).disabled=false);
-    cv.hidden=false; $('empty').hidden=true; $('meta').hidden=false;
-    $('hexwrap').hidden=false; $('footer').hidden=false;
-    const rack=$('rack'); rack.style.opacity='1'; rack.style.pointerEvents='auto'; rack.setAttribute('aria-disabled','false');
-    if(state.view3D.on){cv.hidden=true;$('gl').hidden=false;state.view3D.dirty=true;}
-    refresh();
-  }
-  function loadBMPBytes(buf){
-    const b=new Uint8Array(buf);
-    state.bytes=b; state.source=b.slice();
-    state.width=clamp(Math.abs(i32(b,18))||1,1,4096);
-    state.height=clamp(Math.abs(i32(b,22))||1,1,4096);
-    state.dataOffset=54; afterLoad(); toast('loaded .bmp · '+b.length.toLocaleString()+' bytes');
-  }
-  function loadImage(file){
-    const url=URL.createObjectURL(file), im=new Image();
-    im.onload=()=>{
-      let w=im.naturalWidth,h=im.naturalHeight;
-      const s=Math.min(1,MAXDIM/Math.max(w,h));
-      w=Math.max(1,Math.round(w*s)); h=Math.max(1,Math.round(h*s));
-      const c=document.createElement('canvas'); c.width=w; c.height=h;
-      c.getContext('2d').drawImage(im,0,0,w,h);
-      const bmp=imageDataToBMP(c.getContext('2d').getImageData(0,0,w,h));
-      state.bytes=bmp; state.source=bmp.slice(); state.width=w; state.height=h; state.dataOffset=54;
-      URL.revokeObjectURL(url); afterLoad();
-      toast(s<1?('scaled to '+w+'×'+h+' · encoded to BMP'):'encoded to BMP');
-    };
-    im.onerror=()=>{URL.revokeObjectURL(url);toast('could not decode that image');};
-    im.src=url;
-  }
-  function handleFile(file){
-    if(!file)return;
-    const name=(file.name||'').toLowerCase();
-    const r=new FileReader();
-    r.onload=()=>{const h=new Uint8Array(r.result);if(name.endsWith('.bmp')||(h[0]===0x42&&h[1]===0x4D))loadBMPBytes(r.result);else loadImage(file);};
-    r.onerror=()=>loadImage(file);
-    r.readAsArrayBuffer(file);
-  }
-
-  const FX={
-    noise(){const amt=(+$('noiseAmt').value)/100,[s,e]=region(),r=rngFor('noise'),b=state.bytes.slice();for(let i=s;i<e;i++)if(r()<amt)b[i]=(r()*256)|0;commit(b);},
-    bitrot(){const n=+$('bitAmt').value,[s,e]=region(),b=state.bytes.slice();for(let i=s;i<e;i++){const v=b[i];b[i]=((v<<n)|(v>>>(8-n)))&255;}commit(b);},
-    xor(){const key=keyToBytes($('xorKey').value),[s,e]=region(),b=state.bytes.slice();for(let i=s,k=0;i<e;i++,k++)b[i]^=key[k%key.length];commit(b);},
-    shift(){const n=+$('shiftAmt').value,[s,e]=region(),b=state.bytes.slice(),L=e-s;if(L<=0)return;const t=b.slice(s,e),out=new Uint8Array(L);for(let i=0;i<L;i++)out[i]=t[(i+n)%L];b.set(out,s);commit(b);},
-    sort(){const win=+$('sortAmt').value,[s,e]=region(),b=state.bytes.slice();for(let i=s;i<e;i+=win){const end=Math.min(i+win,e);const seg=Array.from(b.subarray(i,end)).sort((a,c)=>a-c);b.set(seg,i);}commit(b);},
-    reverse(){const [s,e]=region(),b=state.bytes.slice();for(let i=s,j=e-1;i<j;i++,j--){const t=b[i];b[i]=b[j];b[j]=t;}commit(b);},
-    channel(){const amt=(+$('chanAmt').value)/100,ch=state.chan,off=state.dataOffset,[s,e]=region(),r=rngFor('chan'+ch),b=state.bytes.slice();for(let i=s;i<e;i++)if((((i-off)%3)+3)%3===ch&&r()<amt)b[i]=(r()*256)|0;commit(b);},
-    findrepl(){
-      const find=parseHex($('frFind').value),repl=parseHex($('frRepl').value);
-      if(!find.length){toast('need a hex pattern to find');return;}
-      const [s,e]=region(),src=state.bytes,out=[];
-      for(let i=0;i<s;i++)out.push(src[i]);
-      let i=s;
-      while(i<e){
-        let m=i+find.length<=e;
-        if(m)for(let k=0;k<find.length;k++)if(src[i+k]!==find[k]){m=false;break;}
-        if(m){for(const v of repl)out.push(v);i+=find.length;}else{out.push(src[i]);i++;}
-      }
-      for(let j=e;j<src.length;j++)out.push(src[j]);
-      commit(Uint8Array.from(out));
-    },
-    echo(){
-      const inten=(+$('strAmt').value)/100,r=rngFor('echo'),[s,e]=region(),src=state.bytes,span=e-s;
-      if(span<8)return;
-      const chunk=Math.max(3,Math.floor(span*0.01*(0.4+inten))),cs=s+Math.floor(r()*(span-chunk)),reps=1+Math.floor(r()*(1+inten*4)),piece=src.slice(cs,cs+chunk),out=[];
-      for(let i=0;i<cs+chunk;i++)out.push(src[i]);
-      for(let n=0;n<reps;n++)for(const v of piece)out.push(v);
-      for(let i=cs+chunk;i<src.length;i++)out.push(src[i]);
-      commit(Uint8Array.from(out));
-    },
-    move(){
-      const inten=(+$('strAmt').value)/100,r=rngFor('move'),[s,e]=region(),src=state.bytes,span=e-s;
-      if(span<16)return;
-      const chunk=Math.max(3,Math.floor(span*0.02*(0.4+inten))),cs=s+Math.floor(r()*(span-chunk)),piece=src.slice(cs,cs+chunk);
-      const removed=new Uint8Array(src.length-chunk); removed.set(src.subarray(0,cs),0); removed.set(src.subarray(cs+chunk),cs);
-      let dst=clamp(s+Math.floor(r()*(removed.length-s)),s,removed.length);
-      const out=new Uint8Array(removed.length+chunk);
-      out.set(removed.subarray(0,dst),0); out.set(piece,dst); out.set(removed.subarray(dst),dst+chunk);
-      commit(out);
-    },
-    rowshift(){
-      const inten=(+$('strAmt').value)/100,r=rngFor('rowshift');
-      const off=state.dataOffset,W=state.width,pad=(4-((W*3)%4))%4,stride=W*3+pad,H=state.height,src=state.bytes,out=[];
-      for(let i=0;i<off;i++)out.push(src[i]);
-      let p=off; const maxJit=Math.max(1,Math.floor(stride*0.15*inten));
-      for(let y=0;y<H;y++){
-        for(let x=0;x<stride&&p<src.length;x++){out.push(src[p]);p++;}
-        const jit=Math.floor(r()*maxJit);
-        for(let j=0;j<jit;j++)out.push((r()*256)|0);
-      }
-      while(p<src.length){out.push(src[p]);p++;}
-      commit(Uint8Array.from(out));
-    },
-    carve(){
-      const inten=(+$('strAmt').value)/100,r=rngFor('carve'),[s,e]=region(),src=state.bytes,span=e-s;
-      if(span<16)return;
-      const chunk=Math.max(1,Math.floor(span*0.02*inten)),cs=s+Math.floor(r()*(span-chunk));
-      const out=new Uint8Array(src.length-chunk); out.set(src.subarray(0,cs),0); out.set(src.subarray(cs+chunk),cs);
-      commit(out);
-    },
-    invert(){const [s,e]=region(),b=state.bytes.slice();for(let i=s;i<e;i++)b[i]=255-b[i];commit(b);},
-    bitcrush(){const k=+$('bcAmt').value,mask=(0xFF<<(8-k))&0xFF,[s,e]=region(),b=state.bytes.slice();for(let i=s;i<e;i++)b[i]&=mask;commit(b);},
-    byteadd(){const amt=+$('baAmt').value,[s,e]=region(),b=state.bytes.slice();for(let i=s;i<e;i++)b[i]=(b[i]+amt)&255;commit(b);},
-    rgbshift(){
-      const px=+$('rgbAmt').value,ch=state.rgbCh,off=state.dataOffset,[s,e]=region(),src=state.bytes,b=src.slice(),len=src.length,shift=px*3;
-      for(let i=s;i<e;i++){if((((i-off)%3)+3)%3===ch){const j=i+shift;b[i]=(j>=0&&j<len)?src[j]:0;}}
-      commit(b);
-    },
-    pixelsort(){
-      const amt=(+$('psAmt').value)/100,vert=state.psVert,b=state.bytes.slice();
-      const off=state.dataOffset,W=state.width,H=state.height,pad=(4-((W*3)%4))%4,stride=W*3+pad,len=b.length;
-      let lo=255,hi=0;
-      for(let r=0;r<H;r++){const base=off+r*stride;for(let x=0;x<W;x++){const p=base+x*3;if(p+2>=len)break;const l=0.299*b[p+2]+0.587*b[p+1]+0.114*b[p];if(l<lo)lo=l;if(l>hi)hi=l;}}
-      if(hi<=lo)return;
-      const cutoff=hi-amt*(hi-lo);
-      if(vert){for(let x=0;x<W;x++)sortPixelLine(b,off+x*3,stride,H,cutoff,len);}
-      else{for(let r=0;r<H;r++)sortPixelLine(b,off+r*stride,3,W,cutoff,len);}
-      commit(b);
-    },
-    wave(){
-      const amp=+$('waAmt').value,freq=(+$('wfAmt').value)/100;
-      const off=state.dataOffset,W=state.width,H=state.height,pad=(4-((W*3)%4))%4,stride=W*3+pad,b=state.bytes.slice(),len=b.length;
-      const row=new Uint8Array(W*3);
-      for(let r=0;r<H;r++){
-        const shift=Math.round(amp*Math.sin(freq*r)); if(!shift)continue;
-        const base=off+r*stride; if(base+W*3>len)break;
-        for(let x=0;x<W*3;x++)row[x]=b[base+x];
-        for(let x=0;x<W;x++){const sx=(((x+shift)%W)+W)%W,p=base+x*3,q=sx*3;b[p]=row[q];b[p+1]=row[q+1];b[p+2]=row[q+2];}
-      }
-      commit(b);
-    },
-    rowstutter(){
-      const inten=(+$('strAmt').value)/100,r=rngFor('stutter');
-      const off=state.dataOffset,W=state.width,H=state.height,pad=(4-((W*3)%4))%4,stride=W*3+pad,b=state.bytes.slice(),len=b.length;
-      if(H<3)return;
-      const blk=Math.max(1,Math.floor(1+r()*6));                       // source slice: 1..7 rows
-      const bandRows=Math.max(blk+1,Math.floor(H*(0.15+0.5*inten)));   // frozen band height scales with intensity
-      const maxStart=Math.max(1,H-blk-bandRows),startRow=Math.floor(r()*maxStart);
-      let dst=startRow+blk; const endDst=Math.min(H,dst+bandRows); let k=0;
-      while(dst<endDst){
-        const sB=off+(startRow+(k%blk))*stride,dB=off+dst*stride;
-        for(let x=0;x<stride;x++){if(dB+x<len&&sB+x<len)b[dB+x]=b[sB+x];}
-        dst++; k++;
-      }
-      commit(b);
-    },
-    sliceshuffle(){
-      const inten=(+$('strAmt').value)/100,r=rngFor('slice');
-      const off=state.dataOffset,W=state.width,H=state.height,pad=(4-((W*3)%4))%4,stride=W*3+pad,b=state.bytes.slice(),len=b.length;
-      const slices=Math.max(2,Math.floor(3+r()*20*inten)),bandH=Math.ceil(H/slices);
-      for(let sIdx=0;sIdx<slices;sIdx++){
-        const y0=sIdx*bandH,y1=Math.min(H,y0+bandH),shiftPx=Math.round((r()*2-1)*W*0.5*inten);
-        if(!shiftPx)continue;
-        for(let y=y0;y<y1;y++)rotRow(b,off+y*stride,W,shiftPx,len);
-      }
-      commit(b);
-    },
-    channelswap(){
-      const perm=SWAP_PERMS[state.swapMode]||SWAP_PERMS.rb,off=state.dataOffset,b=state.bytes.slice(),len=b.length;
-      for(let p=off;p+2<len;p+=3){const s0=b[p],s1=b[p+1],s2=b[p+2],src=[s0,s1,s2];b[p]=src[perm[0]];b[p+1]=src[perm[1]];b[p+2]=src[perm[2]];}
-      commit(b);
-    },
-    datasmear(){
-      const amt=(+$('smAmt').value)/100,r=rngFor('smear');
-      const off=state.dataOffset,W=state.width,H=state.height,pad=(4-((W*3)%4))%4,stride=W*3+pad,b=state.bytes.slice(),len=b.length;
-      for(let y=0;y<H;y++){
-        const base=off+y*stride; if(base+W*3>len)break;
-        let hold=-1,runLeft=0;
-        for(let x=0;x<W;x++){
-          const p=base+x*3;
-          if(runLeft>0&&hold>=0){b[p]=b[hold];b[p+1]=b[hold+1];b[p+2]=b[hold+2];runLeft--;}
-          else if(r()<amt*0.35){hold=p;runLeft=1+Math.floor(r()*W*0.3*amt);}
-        }
-      }
-      commit(b);
-    },
-    interlace(){
-      const n=+$('ilAmt').value,off=state.dataOffset,W=state.width,H=state.height,pad=(4-((W*3)%4))%4,stride=W*3+pad,b=state.bytes.slice(),len=b.length;
-      if(!n){commit(b);return;}
-      for(let y=0;y<H;y++)rotRow(b,off+y*stride,W,(y&1)?-n:n,len);
-      commit(b);
-    },
-    dither(){
-      const levels=Math.max(2,+$('ditAmt').value),off=state.dataOffset,W=state.width,H=state.height,pad=(4-((W*3)%4))%4,stride=W*3+pad,b=state.bytes.slice(),len=b.length;
-      const M=[[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]],step=255/(levels-1);
-      for(let y=0;y<H;y++){
-        const base=off+y*stride; if(base+W*3>len)break;
-        for(let x=0;x<W;x++){
-          const p=base+x*3,thr=(M[y&3][x&3]/16-0.5)*step;
-          for(let c=0;c<3;c++){let v=Math.round((b[p+c]+thr)/step)*step;b[p+c]=v<0?0:v>255?255:v;}
-        }
-      }
-      commit(b);
-    },
-    blockshuffle(){
-      const inten=(+$('strAmt').value)/100,r=rngFor('block');
-      const off=state.dataOffset,W=state.width,H=state.height,pad=(4-((W*3)%4))%4,stride=W*3+pad,b=state.bytes.slice(),len=b.length;
-      const bs=Math.max(4,Math.floor(8+r()*40)),cols=Math.floor(W/bs),rows=Math.floor(H/bs);
-      if(cols<2||rows<2){commit(b);return;}
-      const swaps=Math.floor(cols*rows*0.5*inten)+1;
-      for(let n=0;n<swaps;n++){
-        const ax=Math.floor(r()*cols),ay=Math.floor(r()*rows),bx=Math.floor(r()*cols),by=Math.floor(r()*rows);
-        if(ax===bx&&ay===by)continue;
-        swapBlock(b,off,stride,ax*bs,ay*bs,bx*bs,by*bs,bs,len);
-      }
-      commit(b);
-    },
-    ghost(){
-      const dx=+$('ghAmt').value,amt=(+$('ghOpac').value)/100,inv=1-amt;
-      const off=state.dataOffset,W=state.width,H=state.height,pad=(4-((W*3)%4))%4,stride=W*3+pad,src=state.bytes,b=src.slice(),len=b.length;
-      for(let y=0;y<H;y++){
-        const base=off+y*stride; if(base+W*3>len)break;
-        for(let x=0;x<W;x++){
-          const sx=x-dx; if(sx<0||sx>=W)continue;
-          const p=base+x*3,q=base+sx*3;
-          b[p]=(src[p]*inv+src[q]*amt)|0; b[p+1]=(src[p+1]*inv+src[q+1]*amt)|0; b[p+2]=(src[p+2]*inv+src[q+2]*amt)|0;
-        }
-      }
-      commit(b);
-    },
-    emboss(){
-      const off=state.dataOffset,W=state.width,H=state.height,pad=(4-((W*3)%4))%4,stride=W*3+pad,src=state.bytes,b=src.slice(),len=b.length;
-      for(let y=0;y<H;y++){
-        const base=off+y*stride; if(base+W*3>len)break;
-        for(let x=0;x<W;x++){
-          const p=base+x*3,qx=x>0?x-1:x,qy=y>0?y-1:y,q=off+qy*stride+qx*3;
-          for(let c=0;c<3;c++){let v=128+(src[p+c]-src[q+c]);b[p+c]=v<0?0:v>255?255:v;}
-        }
-      }
-      commit(b);
-    },
-    huerotate(){
-      const a=(+$('hueAmt').value)*Math.PI/180,cs=Math.cos(a),sn=Math.sin(a);
-      const m=[0.213+cs*0.787-sn*0.213,0.715-cs*0.715-sn*0.715,0.072-cs*0.072+sn*0.928,
-               0.213-cs*0.213+sn*0.143,0.715+cs*0.285+sn*0.140,0.072-cs*0.072-sn*0.283,
-               0.213-cs*0.213-sn*0.787,0.715-cs*0.715+sn*0.715,0.072+cs*0.928+sn*0.072];
-      const off=state.dataOffset,b=state.bytes.slice(),len=b.length;
-      for(let p=off;p+2<len;p+=3){
-        const B=b[p],G=b[p+1],R=b[p+2];
-        let nr=R*m[0]+G*m[1]+B*m[2],ng=R*m[3]+G*m[4]+B*m[5],nb=R*m[6]+G*m[7]+B*m[8];
-        b[p]=nb<0?0:nb>255?255:nb|0; b[p+1]=ng<0?0:ng>255?255:ng|0; b[p+2]=nr<0?0:nr>255?255:nr|0;
-      }
-      commit(b);
-    },
-    sinebands(){
-      const amp=+$('sbAmt').value,freq=(+$('sbFreq').value)/100;
-      const off=state.dataOffset,W=state.width,H=state.height,pad=(4-((W*3)%4))%4,stride=W*3+pad,b=state.bytes.slice(),len=b.length;
-      for(let y=0;y<H;y++){
-        const base=off+y*stride; if(base+W*3>len)break;
-        for(let x=0;x<W;x++){
-          const p=base+x*3,ph=freq*(x+y);
-          b[p]=(b[p]+Math.round(amp*Math.sin(ph+4.188)))&255;
-          b[p+1]=(b[p+1]+Math.round(amp*Math.sin(ph+2.094)))&255;
-          b[p+2]=(b[p+2]+Math.round(amp*Math.sin(ph)))&255;
-        }
-      }
-      commit(b);
-    },
-    chunkmove(){
-      const {ss,sl,dd}=chunkBounds(),src=state.bytes,piece=src.slice(ss,ss+sl);
-      const removed=new Uint8Array(src.length-sl); removed.set(src.subarray(0,ss),0); removed.set(src.subarray(ss+sl),ss);
-      let d = dd<=ss ? dd : dd>=ss+sl ? dd-sl : ss; d=clamp(d,0,removed.length);
-      const out=new Uint8Array(removed.length+sl); out.set(removed.subarray(0,d),0); out.set(piece,d); out.set(removed.subarray(d),d+sl);
-      commit(out);
-    },
-    chunkecho(){
-      const {ss,sl,dd}=chunkBounds(),src=state.bytes,piece=src.slice(ss,ss+sl),d=clamp(dd,0,src.length);
-      const out=new Uint8Array(src.length+sl); out.set(src.subarray(0,d),0); out.set(piece,d); out.set(src.subarray(d),d+sl);
-      commit(out);
-    },
-    chunkcarve(){
-      const {ss,sl}=chunkBounds(),src=state.bytes;
-      const out=new Uint8Array(src.length-sl); out.set(src.subarray(0,ss),0); out.set(src.subarray(ss+sl),ss);
-      commit(out);
-    },
-    chunkrotate(){
-      const {ss,sl}=chunkBounds(),b=state.bytes.slice();
-      let k=Math.round((state.chunkRot/100)*sl); k=(((k%sl)+sl)%sl);
-      if(k){const tmp=b.slice(ss,ss+sl);for(let i=0;i<sl;i++)b[ss+i]=tmp[(i+k)%sl];}
-      commit(b);
-    },
-    chunkreverse(){
-      const {ss,sl}=chunkBounds(),b=state.bytes.slice();
-      for(let i=ss,j=ss+sl-1;i<j;i++,j--){const t=b[i];b[i]=b[j];b[j]=t;}
-      commit(b);
-    }
-  };
-  function chunkBounds(){
-    const [s,e]=region(),span=Math.max(1,e-s);
-    const ss=clamp(s+Math.floor(state.chunkOff*span),s,e-1);
-    let sl=Math.max(1,Math.floor(state.chunkLen*span)); sl=Math.min(sl,e-ss);
-    const dd=clamp(s+Math.floor(state.chunkDst*span),s,e);
-    return {s,e,ss,sl,dd};
-  }
-  function updateChunkReadout(){
-    if(!state.bytes)return;
-    const {ss,sl,dd}=chunkBounds();
-    const el=$('chunkRead'); if(el)el.textContent='src 0x'+ss.toString(16)+' · '+sl.toLocaleString()+'B → 0x'+dd.toString(16);
-  }
-  const SWAP_PERMS={rb:[2,1,0],rg:[0,2,1],gb:[1,0,2],rot:[1,2,0]};
-  function swapBlock(b,off,stride,x0,y0,x1,y1,bs,len){
-    for(let dy=0;dy<bs;dy++){
-      const r0=off+(y0+dy)*stride+x0*3,r1=off+(y1+dy)*stride+x1*3;
-      for(let dx=0;dx<bs*3;dx++){const p=r0+dx,q=r1+dx;if(p<len&&q<len){const t=b[p];b[p]=b[q];b[q]=t;}}
-    }
-  }
-  // rotate a row's W pixels horizontally by k (wrap), 3 bytes/pixel
-  function rotRow(b,base,W,k,len){
-    k=(((k%W)+W)%W); if(!k||base+W*3>len)return;
-    const tmp=new Uint8Array(W*3);
-    for(let x=0;x<W;x++){const sx=(x+k)%W,q=sx*3;tmp[x*3]=b[base+q];tmp[x*3+1]=b[base+q+1];tmp[x*3+2]=b[base+q+2];}
-    for(let x=0;x<W*3;x++)b[base+x]=tmp[x];
-  }
-  // sort whole pixels (3-byte units) along a line by luminance, within bright runs — keeps color
-  function sortPixelLine(b,start,step,count,t,len){
-    let i=0;
-    while(i<count){
-      let p=start+i*step;
-      if(p+2>=len){break;}
-      let l=0.299*b[p+2]+0.587*b[p+1]+0.114*b[p];
-      if(l<t){i++;continue;}
-      let j=i; const seg=[];
-      while(j<count){
-        const q=start+j*step; if(q+2>=len)break;
-        const lum=0.299*b[q+2]+0.587*b[q+1]+0.114*b[q];
-        if(lum<t)break;
-        seg.push([lum,b[q],b[q+1],b[q+2]]); j++;
-      }
-      seg.sort((a,c)=>a[0]-c[0]);
-      for(let k=0;k<seg.length;k++){const w=start+(i+k)*step;if(w+2<len){b[w]=seg[k][1];b[w+1]=seg[k][2];b[w+2]=seg[k][3];}}
-      i=j===i?i+1:j;
-    }
-  }
-
-  function randomStack(){
-    const usedSeed=state.seed>>>0;
-    const r=rngFor('stack');
-    const pool=['noise','bitrot','xor','shift','sort','channel','findrepl','echo','rowshift',
-                'invert','byteadd','bitcrush','rgbshift','pixelsort','wave','rowstutter',
-                'sliceshuffle','channelswap','datasmear','interlace','dither',
-                'blockshuffle','ghost','emboss','huerotate','sinebands'];
-    const n=2+Math.floor(r()*3);
-    pushUndo(); SILENT=true;
-    for(let k=0;k<n;k++){
-      const name=pool[Math.floor(r()*pool.length)];
-      if(name==='noise')$('noiseAmt').value=String(1+Math.floor(r()*8));
-      if(name==='bitrot')$('bitAmt').value=String(1+Math.floor(r()*7));
-      if(name==='shift')$('shiftAmt').value=String(1+Math.floor(r()*12));
-      if(name==='channel')state.chan=Math.floor(r()*3);
-      if(name==='byteadd')$('baAmt').value=String(-200+Math.floor(r()*400));
-      if(name==='bitcrush')$('bcAmt').value=String(2+Math.floor(r()*4));
-      if(name==='rgbshift'){state.rgbCh=Math.floor(r()*3);$('rgbAmt').value=String(-20+Math.floor(r()*40));}
-      if(name==='pixelsort'){$('psAmt').value=String(40+Math.floor(r()*60));state.psVert=r()<0.3;}
-      if(name==='wave'){$('waAmt').value=String(3+Math.floor(r()*30));$('wfAmt').value=String(5+Math.floor(r()*120));}
-      if(name==='channelswap')state.swapMode=['rb','rg','gb','rot'][Math.floor(r()*4)];
-      if(name==='datasmear')$('smAmt').value=String(30+Math.floor(r()*60));
-      if(name==='interlace')$('ilAmt').value=String(2+Math.floor(r()*20));
-      if(name==='dither')$('ditAmt').value=String(2+Math.floor(r()*5));
-      if(name==='ghost'){$('ghAmt').value=String(3+Math.floor(r()*40));$('ghOpac').value=String(30+Math.floor(r()*50));}
-      if(name==='huerotate')$('hueAmt').value=String(Math.floor(r()*360));
-      if(name==='sinebands'){$('sbAmt').value=String(15+Math.floor(r()*80));$('sbFreq').value=String(5+Math.floor(r()*80));}
-      const fn=FX[name]; if(fn)fn();
-    }
-    SILENT=false; refresh();
-    // advance the seed so the next press explores new territory; the toast records
-    // which seed made THIS result — type it back in to reproduce, then press again.
-    state.seed=(usedSeed+1)>>>0; $('seed').value=state.seed; $('seedVal').textContent=state.seed;
-    toast('corrupted · seed '+usedSeed+' · '+n+' ops');
-  }
-
-  /* hex editor (virtualized) */
-  const scroll=$('hexscroll'), inner=$('hexinner');
-  let hexRAF=0;
-  function renderHex(){
-    if(!state.bytes)return;
-    const rows=Math.ceil(state.bytes.length/BPR);
-    inner.style.height=(rows*ROWH)+'px';
-    if(!hexRAF)hexRAF=requestAnimationFrame(drawHexRows);
-  }
-  function parseHexByte(val){const s=(val||'').replace(/[^0-9a-fA-F]/g,'').slice(0,2);if(!s)return null;return parseInt(s,16)&255;}
-  function closeEdit(){
-    if(state.editing==null)return;
-    const ed=$('hexedit'), o=state.editing; state.editing=null;
-    if(ed){const v=parseHexByte(ed.value);if(v!=null){const b=state.bytes.slice();b[o]=v;commit(b);return;}}
-    drawHexRows();
-  }
-  function drawHexRows(){
-    hexRAF=0;
-    const bytes=state.bytes; if(!bytes)return;
-    const len=bytes.length, rows=Math.ceil(len/BPR);
-    const st=scroll.scrollTop, vh=scroll.clientHeight;
-    const first=Math.max(0,Math.floor(st/ROWH)-4), last=Math.min(rows,Math.ceil((st+vh)/ROWH)+4);
-    const hdrEnd=state.protect?state.dataOffset:0;
-    let html='';
-    for(let rr=first;rr<last;rr++){
-      const off=rr*BPR; let bytesHtml='', ascii='';
-      for(let c=0;c<BPR;c++){
-        const o=off+c;
-        if(o>=len){bytesHtml+='  '+(c===7?' ':' ');ascii+=' ';continue;}
-        const v=bytes[o], hx=v.toString(16).padStart(2,'0');
-        if(state.editing===o){bytesHtml+='<input class="edit" id="hexedit" maxlength="2" value="'+hx+'">';}
-        else{let cls='by';if(o<hdrEnd)cls+=' hdr';else if(v===0)cls+=' b0';bytesHtml+='<span class="'+cls+'" data-o="'+o+'">'+hx+'</span>';}
-        bytesHtml+=(c===7?'  ':' ');
-        ascii+=(v>=32&&v<127)?String.fromCharCode(v):'·';
-      }
-      html+='<div class="hxrow" style="top:'+(rr*ROWH)+'px"><span class="hxoff">'+off.toString(16).padStart(8,'0')+'</span><span class="hxbytes">'+bytesHtml+'</span><span class="hxascii">'+ascii+'</span></div>';
-    }
-    inner.innerHTML=html;
-    const ed=$('hexedit');
-    if(ed){
-      ed.focus(); ed.select();
-      ed.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();closeEdit();}else if(e.key==='Escape'){state.editing=null;drawHexRows();}});
-      ed.addEventListener('blur',()=>{if(state.editing!=null)closeEdit();});
-    }
-  }
-  inner.addEventListener('mousedown',e=>{
-    const t=e.target.closest('.by'); if(!t)return;
-    e.preventDefault();
-    const o=+t.dataset.o;
-    if(state.editing!=null)closeEdit();
-    state.editing=o; drawHexRows();
-  });
-  scroll.addEventListener('scroll',()=>{if(!hexRAF)hexRAF=requestAnimationFrame(drawHexRows);});
-
-  /* wiring */
-  $('file').addEventListener('change',e=>handleFile(e.target.files[0]));
-  const scopeEl=$('scope');
-  ['dragenter','dragover'].forEach(ev=>scopeEl.addEventListener(ev,e=>{e.preventDefault();scopeEl.classList.add('drag');}));
-  ['dragleave','drop'].forEach(ev=>scopeEl.addEventListener(ev,e=>{e.preventDefault();scopeEl.classList.remove('drag');}));
-  scopeEl.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f)handleFile(f);});
-
-  document.querySelectorAll('[data-fx]').forEach(btn=>btn.addEventListener('click',()=>{const fx=btn.dataset.fx;if(FX[fx]){FX[fx]();toast(fx);}}));
-  $('btnRandom').addEventListener('click',randomStack);
-  $('btnUndo').addEventListener('click',()=>{if(!state.undo.length)return;state.bytes=state.undo.pop();if(!state.undo.length)$('btnUndo').disabled=true;refresh();});
-  $('btnReset').addEventListener('click',()=>{if(!state.source)return;pushUndo();state.bytes=state.source.slice();refresh();toast('reset to source');});
-  $('btnPng').addEventListener('click',()=>{decodeToCanvas();cv.toBlob(b=>download(b,'databend.png'),'image/png');});
-  $('btnBmp').addEventListener('click',()=>download(new Blob([state.bytes],{type:'image/bmp'}),'databend.bmp'));
-  function download(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
-
-  const bindLabel=(id,lab,fmt)=>{const el=$(id),out=$(lab),u=()=>out.textContent=fmt(el.value);el.addEventListener('input',u);u();};
-  bindLabel('noiseAmt','noiseV',v=>v+'%'); bindLabel('bitAmt','bitV',v=>v);
-  bindLabel('shiftAmt','shiftV',v=>v); bindLabel('sortAmt','sortV',v=>v);
-  bindLabel('chanAmt','chanV',v=>v+'%'); bindLabel('strAmt','strV',v=>v+'%');
-  bindLabel('bcAmt','bcV',v=>v); bindLabel('baAmt','baV',v=>v);
-  bindLabel('rgbAmt','rgbV',v=>v); bindLabel('psAmt','psV',v=>v+'%');
-  bindLabel('waAmt','waV',v=>v); bindLabel('wfAmt','wfV',v=>(v/100).toFixed(2));
-  bindLabel('ditAmt','ditV',v=>v); bindLabel('smAmt','smV',v=>v+'%'); bindLabel('ilAmt','ilV',v=>v);
-  bindLabel('sbAmt','sbV',v=>v); bindLabel('sbFreq','sfV',v=>(v/100).toFixed(2));
-  bindLabel('ghAmt','ghV',v=>v); bindLabel('ghOpac','goV',v=>v+'%'); bindLabel('hueAmt','hueV',v=>v);
-  $('swapSel').addEventListener('change',e=>{state.swapMode=e.target.value;});
-
-  const chunkSlider=(id,lab,key,fmt)=>{const el=$(id),out=$(lab);const u=()=>{state[key]=(+el.value)/100;out.textContent=fmt(el.value);updateChunkReadout();};el.addEventListener('input',u);u();};
-  chunkSlider('chunkOff','coV','chunkOff',v=>v+'%');
-  chunkSlider('chunkLen','clV','chunkLen',v=>v+'%');
-  chunkSlider('chunkDst','cdV','chunkDst',v=>v+'%');
-  { const el=$('chunkRot'),out=$('crV'),u=()=>{state.chunkRot=+el.value;out.textContent=el.value+'%';};el.addEventListener('input',u);u(); }
-  $('chunkShow').addEventListener('click',()=>{if(!state.bytes)return;const {ss}=chunkBounds();scroll.scrollTop=Math.floor(ss/BPR)*ROWH;});
-
-  $('psSeg').addEventListener('click',e=>{const b=e.target.closest('[data-v]');if(!b)return;state.psVert=b.dataset.v==='1';[...$('psSeg').children].forEach(c=>c.classList.toggle('on',c===b));});
-  $('rgbChSel').addEventListener('change',e=>{state.rgbCh=+e.target.value;});
-
-  $('chanSeg').addEventListener('click',e=>{const b=e.target.closest('[data-ch]');if(!b)return;state.chan=+b.dataset.ch;[...$('chanSeg').children].forEach(c=>c.classList.toggle('on',c===b));});
-  $('seed').addEventListener('input',e=>{state.seed=(+e.target.value)||0;$('seedVal').textContent=state.seed;});
-  $('seedRnd').addEventListener('click',()=>{const s=Math.floor(Math.random()*1e6);$('seed').value=s;state.seed=s;$('seedVal').textContent=s;});
-  $('protect').addEventListener('change',e=>{state.protect=e.target.checked;renderHex();});
-  $('trustdims').addEventListener('change',e=>{state.trustDims=e.target.checked;refresh();});
-  $('live').addEventListener('change',e=>{state.live=e.target.checked;if(state.live)decodeToCanvas();});
-
-  $('gotoBtn').addEventListener('click',gotoOffset);
-  $('goto').addEventListener('keydown',e=>{if(e.key==='Enter')gotoOffset();});
-  function gotoOffset(){const v=parseInt(($('goto').value||'').replace(/[^0-9a-fA-F]/g,''),16);if(isNaN(v))return;scroll.scrollTop=Math.floor(v/BPR)*ROWH;}
-  $('jumpPix').addEventListener('click',()=>{scroll.scrollTop=Math.floor(state.dataOffset/BPR)*ROWH;});
-  window.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!$('btnUndo').disabled){e.preventDefault();$('btnUndo').click();}});
-
-  /* ================= 3D terrain viewer (WebGL1) ================= */
-  const V3=state.view3D, glc=$('gl');
-  const M4={
-    persp(fovy,asp,n,f){const t=1/Math.tan(fovy/2),nf=1/(n-f);return [t/asp,0,0,0, 0,t,0,0, 0,0,(f+n)*nf,-1, 0,0,2*f*n*nf,0];},
-    lookAt(e,c,u){
-      let z0=e[0]-c[0],z1=e[1]-c[1],z2=e[2]-c[2];let zl=Math.hypot(z0,z1,z2)||1;z0/=zl;z1/=zl;z2/=zl;
-      let x0=u[1]*z2-u[2]*z1,x1=u[2]*z0-u[0]*z2,x2=u[0]*z1-u[1]*z0;let xl=Math.hypot(x0,x1,x2)||1;x0/=xl;x1/=xl;x2/=xl;
-      let y0=z1*x2-z2*x1,y1=z2*x0-z0*x2,y2=z0*x1-z1*x0;
-      return [x0,y0,z0,0, x1,y1,z1,0, x2,y2,z2,0, -(x0*e[0]+x1*e[1]+x2*e[2]),-(y0*e[0]+y1*e[1]+y2*e[2]),-(z0*e[0]+z1*e[1]+z2*e[2]),1];
-    },
-    mul(a,b){const o=new Array(16);for(let c=0;c<4;c++)for(let r=0;r<4;r++){let s=0;for(let k=0;k<4;k++)s+=a[k*4+r]*b[c*4+k];o[c*4+r]=s;}return o;}
-  };
-  const VERT_SRC=
-    'attribute vec3 a_pos;attribute vec3 a_col;attribute vec3 a_nrm;'+
-    'uniform mat4 u_mvp;varying vec3 v_col;varying vec3 v_nrm;'+
-    'void main(){v_col=a_col;v_nrm=a_nrm;gl_PointSize=2.0;gl_Position=u_mvp*vec4(a_pos,1.0);}';
-  const FRAG_SRC=
-    'precision mediump float;varying vec3 v_col;varying vec3 v_nrm;uniform vec3 u_light;uniform float u_flat;'+
-    'void main(){vec3 n=normalize(v_nrm);float d=max(dot(n,normalize(u_light)),0.0);'+
-    'float shade=mix(0.35+0.75*d,1.0,u_flat);gl_FragColor=vec4(v_col*shade,1.0);}';
-
-  function glErr(gl,sh){const ok=gl.getShaderParameter(sh,gl.COMPILE_STATUS);if(!ok){console.error(gl.getShaderInfoLog(sh));}return ok;}
-  function glInit(){
-    const opts={antialias:true,alpha:false,preserveDrawingBuffer:true};
-    const gl=glc.getContext('webgl',opts)||glc.getContext('experimental-webgl',opts);
-    if(!gl){toast('WebGL not available');return false;}
-    V3.gl=gl;
-    const vs=gl.createShader(gl.VERTEX_SHADER);gl.shaderSource(vs,VERT_SRC);gl.compileShader(vs);glErr(gl,vs);
-    const fs=gl.createShader(gl.FRAGMENT_SHADER);gl.shaderSource(fs,FRAG_SRC);gl.compileShader(fs);glErr(gl,fs);
-    const p=gl.createProgram();gl.attachShader(p,vs);gl.attachShader(p,fs);gl.linkProgram(p);
-    if(!gl.getProgramParameter(p,gl.LINK_STATUS)){console.error(gl.getProgramInfoLog(p));toast('shader link failed');return false;}
-    V3.prog=p;
-    V3.loc={pos:gl.getAttribLocation(p,'a_pos'),col:gl.getAttribLocation(p,'a_col'),nrm:gl.getAttribLocation(p,'a_nrm'),
-      mvp:gl.getUniformLocation(p,'u_mvp'),light:gl.getUniformLocation(p,'u_light'),flat:gl.getUniformLocation(p,'u_flat')};
-    V3.buf={pos:gl.createBuffer(),col:gl.createBuffer(),nrm:gl.createBuffer(),tri:gl.createBuffer(),line:gl.createBuffer(),
-      bpos:gl.createBuffer(),bcol:gl.createBuffer(),bnrm:gl.createBuffer()};
-    gl.enable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
-    return true;
-  }
-  function heightRamp(t){ // dark-blue -> cyan -> red -> white, matches app identity
-    t=t<0?0:t>1?1:t;
-    const stops=[[0.05,0.07,0.11],[0.07,0.55,0.75],[1.0,0.17,0.30],[1.0,0.95,0.92]];
-    const seg=t*(stops.length-1),i=Math.min(stops.length-2,Math.floor(seg)),f=seg-i,a=stops[i],b=stops[i+1];
-    return [a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f,a[2]+(b[2]-a[2])*f];
-  }
-  function gridVals(img,W,H,R){
-    const src=V3.source, val=new Float32Array(R*R), rgb=new Float32Array(R*R*3);
-    for(let j=0;j<R;j++)for(let i=0;i<R;i++){
-      const u=i/(R-1),v=j/(R-1),px=Math.min(W-1,Math.round(u*(W-1))),py=Math.min(H-1,Math.round(v*(H-1))),pi=(py*W+px)*4;
-      const r=img[pi],g=img[pi+1],b=img[pi+2],n=j*R+i;
-      val[n]=src==='lum'?(0.299*r+0.587*g+0.114*b)/255:src==='r'?r/255:src==='g'?g/255:b/255;
-      rgb[n*3]=r/255;rgb[n*3+1]=g/255;rgb[n*3+2]=b/255;
-    }
-    return {val,rgb};
-  }
-  function blurGrid(g,R,radius){          // separable box blur, clamped edges, O(R^2)
-    if(radius<=0)return; const cnt=2*radius+1, P=new Float32Array(R+1), tmp=new Float32Array(R*R);
-    for(let pass=0;pass<2;pass++){
-      for(let j=0;j<R;j++){const base=j*R,v0=g[base],vL=g[base+R-1];P[0]=0;for(let i=0;i<R;i++)P[i+1]=P[i]+g[base+i];
-        for(let i=0;i<R;i++){const lo=i-radius,hi=i+radius,lC=lo<0?-lo:0,rC=hi>R-1?hi-(R-1):0,rl=lo<0?0:lo,rh=hi>R-1?R-1:hi;tmp[base+i]=(P[rh+1]-P[rl]+lC*v0+rC*vL)/cnt;}}
-      for(let i=0;i<R;i++){const v0=tmp[i],vL=tmp[(R-1)*R+i];P[0]=0;for(let j=0;j<R;j++)P[j+1]=P[j]+tmp[j*R+i];
-        for(let j=0;j<R;j++){const lo=j-radius,hi=j+radius,lC=lo<0?-lo:0,rC=hi>R-1?hi-(R-1):0,rl=lo<0?0:lo,rh=hi>R-1?R-1:hi;g[j*R+i]=(P[rh+1]-P[rl]+lC*v0+rC*vL)/cnt;}}
-    }
-  }
-  function build3D(){
-    const gl=V3.gl; if(!gl||!state.bytes)return;
-    decodeToCanvas();
-    const W=cv.width,H=cv.height,img=ctx.getImageData(0,0,W,H).data;
-    buildSmooth(gl,img,W,H);
-    if(V3.mode==='blocks')buildBlocks(gl,img,W,H); else V3.blockCount=0;
-    V3.dirty=false;
-  }
-  function buildSmooth(gl,img,W,H){
-    const R=Math.max(8,V3.res|0), z=V3.zScale, useImg=V3.colour==='image';
-    const sizeX=1, sizeZ=H/W||1, sx=sizeX/(R-1), sz=sizeZ/(R-1);
-    const {val,rgb}=gridVals(img,W,H,R); blurGrid(val,R,V3.blur|0);
-    const pos=new Float32Array(R*R*3), col=new Float32Array(R*R*3), nrm=new Float32Array(R*R*3), Y=new Float32Array(R*R);
-    for(let j=0;j<R;j++)for(let i=0;i<R;i++){
-      const n=j*R+i, y=(val[n]-0.5)*z; Y[n]=y;
-      pos[n*3]=(i/(R-1)-0.5)*sizeX; pos[n*3+1]=y; pos[n*3+2]=(j/(R-1)-0.5)*sizeZ;
-      if(useImg){col[n*3]=rgb[n*3];col[n*3+1]=rgb[n*3+1];col[n*3+2]=rgb[n*3+2];}
-      else{const c=heightRamp(val[n]);col[n*3]=c[0];col[n*3+1]=c[1];col[n*3+2]=c[2];}
-    }
-    for(let j=0;j<R;j++)for(let i=0;i<R;i++){
-      const n=j*R+i,il=i>0?i-1:i,ir=i<R-1?i+1:i,jd=j>0?j-1:j,ju=j<R-1?j+1:j;
-      const dhx=(Y[j*R+ir]-Y[j*R+il])/(((ir-il)||1)*sx),dhz=(Y[ju*R+i]-Y[jd*R+i])/(((ju-jd)||1)*sz);
-      let nx=-dhx,ny=1,nz=-dhz;const l=Math.hypot(nx,ny,nz)||1;nrm[n*3]=nx/l;nrm[n*3+1]=ny/l;nrm[n*3+2]=nz/l;
-    }
-    const tri=[],line=[];
-    for(let j=0;j<R-1;j++)for(let i=0;i<R-1;i++){const a=j*R+i,b=a+1,c=a+R,d=c+1;tri.push(a,c,b,b,c,d);}
-    for(let j=0;j<R;j++)for(let i=0;i<R;i++){const a=j*R+i;if(i<R-1)line.push(a,a+1);if(j<R-1)line.push(a,a+R);}
-    gl.bindBuffer(gl.ARRAY_BUFFER,V3.buf.pos);gl.bufferData(gl.ARRAY_BUFFER,pos,gl.DYNAMIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER,V3.buf.col);gl.bufferData(gl.ARRAY_BUFFER,col,gl.DYNAMIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER,V3.buf.nrm);gl.bufferData(gl.ARRAY_BUFFER,nrm,gl.DYNAMIC_DRAW);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,V3.buf.tri);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(tri),gl.STATIC_DRAW);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,V3.buf.line);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(line),gl.STATIC_DRAW);
-    V3.triCount=tri.length; V3.lineCount=line.length; V3.vertCount=R*R;
-  }
-  function buildBlocks(gl,img,W,H){
-    const R=Math.max(12,Math.min(V3.res|0,96)), z=V3.zScale, useImg=V3.colour==='image';
-    const sizeX=1, sizeZ=H/W||1, hw=(sizeX/(R-1))*0.5, hd=(sizeZ/(R-1))*0.5;
-    const {val,rgb}=gridVals(img,W,H,R); blurGrid(val,R,V3.blur|0);
-    const P=[],C=[],N=[];
-    const Yof=n=>(val[n]-0.5)*z;
-    const colAt=n=>useImg?[rgb[n*3],rgb[n*3+1],rgb[n*3+2]]:heightRamp(val[n]);
-    const v=(x,y,zz,c,nx,ny,nz)=>{P.push(x,y,zz);C.push(c[0],c[1],c[2]);N.push(nx,ny,nz);};
-    const quad=(A,B,Cc,D,c,nx,ny,nz)=>{v(A[0],A[1],A[2],c,nx,ny,nz);v(B[0],B[1],B[2],c,nx,ny,nz);v(Cc[0],Cc[1],Cc[2],c,nx,ny,nz);v(A[0],A[1],A[2],c,nx,ny,nz);v(Cc[0],Cc[1],Cc[2],c,nx,ny,nz);v(D[0],D[1],D[2],c,nx,ny,nz);};
-    for(let j=0;j<R;j++)for(let i=0;i<R;i++){
-      const n=j*R+i,y=Yof(n),c=colAt(n),cx=(i/(R-1)-0.5)*sizeX,cz=(j/(R-1)-0.5)*sizeZ,x0=cx-hw,x1=cx+hw,z0=cz-hd,z1=cz+hd;
-      quad([x0,y,z0],[x0,y,z1],[x1,y,z1],[x1,y,z0],c,0,1,0);                 // flat top
-      if(i<R-1){const yr=Yof(j*R+i+1);if(Math.abs(yr-y)>1e-5){const lo=Math.min(y,yr),hi=Math.max(y,yr),s=y>yr?1:-1;quad([x1,lo,z0],[x1,lo,z1],[x1,hi,z1],[x1,hi,z0],c,s,0,0);}}
-      if(j<R-1){const yf=Yof((j+1)*R+i);if(Math.abs(yf-y)>1e-5){const lo=Math.min(y,yf),hi=Math.max(y,yf),s=y>yf?1:-1;quad([x0,lo,z1],[x1,lo,z1],[x1,hi,z1],[x0,hi,z1],c,0,0,s);}}
-    }
-    gl.bindBuffer(gl.ARRAY_BUFFER,V3.buf.bpos);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(P),gl.DYNAMIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER,V3.buf.bcol);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(C),gl.DYNAMIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER,V3.buf.bnrm);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(N),gl.DYNAMIC_DRAW);
-    V3.blockCount=P.length/3;
-  }
-  function sizeGL(){
-    const gl=V3.gl;if(!gl)return;
-    const w=glc.clientWidth||600,h=glc.clientHeight||440,dpr=Math.min(2,window.devicePixelRatio||1);
-    const bw=Math.round(w*dpr),bh=Math.round(h*dpr);
-    if(glc.width!==bw||glc.height!==bh){glc.width=bw;glc.height=bh;}
-    gl.viewport(0,0,glc.width,glc.height);
-  }
-  function draw3D(){
-    const gl=V3.gl;if(!gl)return;
-    if(V3.dirty)build3D();
-    sizeGL();
-    gl.clearColor(0.051,0.059,0.075,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
-    gl.useProgram(V3.prog);
-    const asp=glc.width/glc.height||1;
-    const el=Math.max(-1.5,Math.min(1.5,V3.el)),r=V3.rad;
-    const cx=V3.tx,cy=V3.ty,cz=V3.tz;
-    const eye=[cx+r*Math.cos(el)*Math.sin(V3.az),cy+r*Math.sin(el),cz+r*Math.cos(el)*Math.cos(V3.az)];
-    const mvp=M4.mul(M4.persp(1.05,asp,0.02,50),M4.lookAt(eye,[cx,cy,cz],[0,1,0]));
-    gl.uniformMatrix4fv(V3.loc.mvp,false,new Float32Array(mvp));
-    gl.uniform3f(V3.loc.light,0.4,0.85,0.45);
-    const bind=(b,loc,n)=>{gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,n,gl.FLOAT,false,0,0);};
-    if(V3.mode==='blocks'){
-      gl.uniform1f(V3.loc.flat,0.0);
-      bind(V3.buf.bpos,V3.loc.pos,3);bind(V3.buf.bcol,V3.loc.col,3);bind(V3.buf.bnrm,V3.loc.nrm,3);
-      if(V3.blockCount)gl.drawArrays(gl.TRIANGLES,0,V3.blockCount);
-      return;
-    }
-    bind(V3.buf.pos,V3.loc.pos,3);bind(V3.buf.col,V3.loc.col,3);bind(V3.buf.nrm,V3.loc.nrm,3);
-    if(V3.mode==='points'){gl.uniform1f(V3.loc.flat,1.0);gl.drawArrays(gl.POINTS,0,V3.vertCount);}
-    else if(V3.mode==='wire'){gl.uniform1f(V3.loc.flat,1.0);gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,V3.buf.line);gl.drawElements(gl.LINES,V3.lineCount,gl.UNSIGNED_SHORT,0);}
-    else{gl.uniform1f(V3.loc.flat,0.0);gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,V3.buf.tri);gl.drawElements(gl.TRIANGLES,V3.triCount,gl.UNSIGNED_SHORT,0);}
-  }
-  function loop(){ if(!V3.on)return; if(V3.auto)V3.az+=0.005; draw3D(); V3.raf=requestAnimationFrame(loop); }
-  function start3D(){
-    if(!V3.gl && !glInit())return;
-    V3.on=true; glc.hidden=false; cv.hidden=true; $('empty').hidden=true; $('d3bar').hidden=false;
-    document.body.classList.add('v3'); $('btn3D').classList.add('primary');
-    V3.dirty=true; if(!V3.raf)V3.raf=requestAnimationFrame(loop);
-  }
-  function stop3D(){
-    V3.on=false; if(V3.raf)cancelAnimationFrame(V3.raf); V3.raf=0;
-    glc.hidden=true; $('d3bar').hidden=true; cv.hidden=false;
-    document.body.classList.remove('v3'); $('btn3D').classList.remove('primary');
-  }
-  $('btn3D').addEventListener('click',()=>{ if(V3.on)stop3D(); else start3D(); });
-  function saveTerrain(){
-    if(!V3.on||!V3.gl){toast('open 3D terrain first');return;}
-    draw3D();
-    glc.toBlob(b=>{ if(b)download(b,'terrain.png'); else toast('save failed'); },'image/png');
-  }
-  $('d3save').addEventListener('click',saveTerrain);
-
-  // orbit + zoom
-  glc.addEventListener('contextmenu',e=>e.preventDefault());
-  glc.addEventListener('pointerdown',e=>{V3.drag={x:e.clientX,y:e.clientY,pan:(e.shiftKey||e.button===2||e.button===1)};glc.setPointerCapture(e.pointerId);glc.classList.add('grabbing');});
-  glc.addEventListener('pointermove',e=>{
-    if(!V3.drag)return;
-    const dx=e.clientX-V3.drag.x,dy=e.clientY-V3.drag.y; V3.drag.x=e.clientX; V3.drag.y=e.clientY;
-    if(V3.drag.pan){
-      const el=Math.max(-1.5,Math.min(1.5,V3.el)),az=V3.az;
-      const f=[-Math.cos(el)*Math.sin(az),-Math.sin(el),-Math.cos(el)*Math.cos(az)];
-      const cr=[f[2],0,-f[0]]; let cl=Math.hypot(cr[0],cr[1],cr[2])||1; cr[0]/=cl;cr[1]/=cl;cr[2]/=cl;
-      const cu=[cr[1]*f[2]-cr[2]*f[1],cr[2]*f[0]-cr[0]*f[2],cr[0]*f[1]-cr[1]*f[0]];
-      const s=V3.rad*0.0018;
-      V3.tx+=(-dx*cr[0]+dy*cu[0])*s; V3.ty+=(-dx*cr[1]+dy*cu[1])*s; V3.tz+=(-dx*cr[2]+dy*cu[2])*s;
-    } else {
-      V3.az-=dx*0.01; V3.el=Math.max(-1.5,Math.min(1.5,V3.el+dy*0.01));
-    }
-  });
-  const endDrag=()=>{V3.drag=null;glc.classList.remove('grabbing');};
-  glc.addEventListener('pointerup',endDrag); glc.addEventListener('pointercancel',endDrag);
-  glc.addEventListener('wheel',e=>{e.preventDefault();V3.rad=Math.max(0.08,Math.min(14,V3.rad*(1+Math.sign(e.deltaY)*0.08)));},{passive:false});
-
-  // 3D controls
-  const seg3=(id,cb)=>{$(id).addEventListener('click',e=>{const b=e.target.closest('[data-v]');if(!b)return;[...$(id).children].forEach(c=>c.classList.toggle('on',c===b));cb(b.dataset.v);});};
-  seg3('d3src',v=>{V3.source=v;V3.dirty=true;});
-  seg3('d3mode',v=>{V3.mode=v;if(v==='blocks')V3.dirty=true;});
-  seg3('d3col',v=>{V3.colour=v;V3.dirty=true;});
-  $('d3z').addEventListener('input',e=>{V3.zScale=(+e.target.value)/100;$('d3zV').textContent=e.target.value+'%';V3.dirty=true;});
-  $('d3res').addEventListener('input',e=>{V3.res=+e.target.value;$('d3rV').textContent=e.target.value;V3.dirty=true;});
-  $('d3blur').addEventListener('input',e=>{V3.blur=+e.target.value;$('d3bV').textContent=e.target.value;V3.dirty=true;});
-  $('d3auto').addEventListener('change',e=>{V3.auto=e.target.checked;});
-  $('d3reset').addEventListener('click',()=>{V3.az=0.7;V3.el=0.6;V3.rad=1.8;V3.tx=0;V3.ty=0;V3.tz=0;});
-  if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion:reduce)').matches){/* leave auto off */}
-})();
-</script>
+<script type="module" src="main.js"></script>
 </body>
 </html>
