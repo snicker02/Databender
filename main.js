@@ -11,7 +11,7 @@ import { createTerrain } from './ui/terrain.js';
 import { createSelection } from './ui/selection.js';
 import { createVariations } from './ui/variations.js';
 
-export const VERSION = '2.0.1';
+export const VERSION = '2.1.0';
 const MAXDIM = 1200, UNDO_CAP = 100;
 const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d', { willReadFrequently: true });
@@ -142,6 +142,7 @@ function renderUI() {
   const active = S.steps.filter(s => stepActive(s, env)).length;
   $('stackK').textContent = S.steps.length + ' step' + (S.steps.length === 1 ? '' : 's');
   $('btnUndo').disabled = !S.undo.length; $('btnRedo').disabled = !S.redo.length;
+  $('btnReset').disabled = !S.base;
   const sel = S.edit >= 0 && S.steps[S.edit] ? S.steps[S.edit].sel : S.sel;
   $('mSel').hidden = !sel; if (sel) $('mSelV').textContent = Math.round((sel.x1 - sel.x0) * 100) + '×' + Math.round((sel.y1 - sel.y0) * 100) + '%' + (S.edit >= 0 ? ' (step ' + (S.edit + 1) + ')' : '');
   if (!S.bytes) return;

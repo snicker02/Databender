@@ -161,5 +161,36 @@ ok(EFFECT_LIST.length >= 40, 'effect count ' + EFFECT_LIST.length);
   }
 }
 
+// --- Art effects: identities at neutral settings, symmetry, selection containment, speed
+{
+  const D = o => decodeBMP(o, W, H, {}).data, d0 = D(bmp);
+  const same = (fx, p, tol = 1) => { const d = D(applyStep(bmp, makeStep(fx, { ...defaultParams(EFFECTS[fx]), ...p }, 1), env)); let m = 0; for (let i = 0; i < d.length; i++) m = Math.max(m, Math.abs(d[i] - d0[i])); ok(m <= tol, fx + ' identity at neutral (max diff ' + m + ')'); };
+  same('gradmap', { mix: 0 }); same('duotone', { mix: 0 }); same('solarcurve', { mix: 0 });
+  same('twirl', { str: 0 }); same('radialchroma', { amt: 0 }); same('selfdisplace', { amt: 0 });
+  same('crt', { line: 0, mask: 0, boost: 100 }); same('bloom', { int: 0 }); same('neon', { gain: 0.5, base: 100 }, 130);
+  same('kaleido', { mode: 'mx', cx: 100 });
+  const q = D(applyStep(bmp, makeStep('kaleido', { ...defaultParams(EFFECTS.kaleido), mode: 'quad' }, 1), env));
+  let sym = true; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const a = (y * W + x) * 4, b = (y * W + (W - 1 - x)) * 4, c = ((H - 1 - y) * W + x) * 4; if (q[a] !== q[b] || q[a] !== q[c]) sym = false; }
+  ok(sym, 'quad mirror is exactly symmetric in x and y');
+  const g = D(applyStep(bmp, makeStep('gradmap', { pal: 'gameboy', cycles: 1, offset: 0, wrap: 'ping', mix: 100 }, 1), env));
+  const gb = new Set(); for (let i = 0; i < g.length; i += 4) gb.add(g[i + 1] >= g[i] && g[i + 1] >= g[i + 2]); ok(gb.size === 1 && gb.has(true), 'gameboy gradient map is green-dominant everywhere');
+  const sel = { x0: 0.3, y0: 0.3, x1: 0.7, y1: 0.6 };
+  for (const fx of ['kaleido', 'twirl', 'crystal', 'halftone', 'bloom', 'drip', 'quadtree']) {
+    const o = D(applyStep(bmp, makeStep(fx, defaultParams(EFFECTS[fx]), 4, sel), env));
+    const X0 = Math.floor(0.3 * W), X1 = Math.ceil(0.7 * W), Y0 = Math.floor(0.3 * H), Y1 = Math.ceil(0.6 * H);
+    let outside = true; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { if (x >= X0 && x < X1 && y >= Y0 && y < Y1) continue; const i = (y * W + x) * 4; if (o[i] !== d0[i] || o[i + 1] !== d0[i + 1] || o[i + 2] !== d0[i + 2]) outside = false; }
+    ok(outside, fx + ' stays inside selection');
+  }
+  // speed at full working size
+  const BW = 1200, BH = 900, big = encodeBMP(img(BW, BH, (x, y) => [(x * 3) & 255, (y * 5) & 255, (x ^ y) & 255]));
+  const benv = { fmt: 'bmp', W: BW, H: BH, off: 54, stride: geom(BW).stride, protect: true, scanStart: 0 };
+  const times = [];
+  for (const d of EFFECT_LIST.filter(e => e.group === 'artcolour' || e.group === 'artform')) {
+    const t0 = performance.now(); applyStep(big, makeStep(d.id, defaultParams(d), 1), benv); const ms = performance.now() - t0;
+    times.push(d.id + ' ' + ms.toFixed(0) + 'ms'); ok(ms < 1500, d.id + ' under 1.5s at 1200x900 (' + ms.toFixed(0) + 'ms)');
+  }
+  console.log('art timings @1200x900:', times.join(', '));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

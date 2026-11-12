@@ -13,12 +13,15 @@
 // len:  true if the effect can change file length (selection then uses a row band).
 import { clamp, keyToBytes, parseHex, lum } from './util.js';
 import { AUDIO_EFFECTS } from './audio.js';
+import { ART_EFFECTS } from './art.js';
 
 export const GROUPS = [
   ['bytes', 'Bytes', 'noise · bit ops · math'],
   ['displace', 'Displace', 'shift · sort · wave'],
   ['channels', 'Channels', 'bgr targeting'],
   ['sort', 'Pixel sort', 'keeps colour'],
+  ['artcolour', 'Art · colour', 'gradient map · duotone · curves'],
+  ['artform', 'Art · form', 'kaleido · halftone · shatter'],
   ['find', 'Find / replace', 'byte patterns'],
   ['struct', 'Structural', 'shear · echo · move'],
   ['chunk', 'Chunk (manual)', 'move · rotate · carve'],
@@ -300,6 +303,7 @@ const LIST = [
   { id: 'chunkreverse', name: 'Chunk: reverse', group: 'chunk', kind: 'stream', random: false, params: chunkParams.slice(0, 2), readout: chunkReadout,
     apply(b, p, c) { const { ss, sl } = chunkBounds({ ...p, dst: 0 }, c), o = b.slice(); o.subarray(ss, ss + sl).reverse(); return o; } },
 
+  ...ART_EFFECTS,
   ...AUDIO_EFFECTS,
 
   // ================= HIDDEN =================

@@ -28,11 +28,13 @@ GitHub Pages serves it as-is.
   - Length-preserving effects are composited into the exact rectangle.
   - Length-changing effects run on that row band.
   - In JPEG mode the rectangle maps to a proportional slice of the scan.
-- **41 effects in 8 groups**:
+- **55 effects in 10 groups**:
   - Bytes: noise, bit rotate, XOR, invert, bit crush, byte add, dither, emboss, sine bands
   - Displace: shift, sort, reverse, wave, smear, interlace, ghost
   - Channels: corrupt, RGB split, swap, hue
   - Pixel sort
+  - Art · colour: gradient map (12 palettes, cycles/phase for psychedelic banding), duotone, solar curves (folded cosine tone curves, chrome/liquid metal)
+  - Art · form: kaleidoscope/mirror, twirl, radial chroma (zoom/spin), self-displace, pixel drip, crystallize/shatter (Voronoi, stained-glass grout), quadtree mosaic, halftone (ink/light/colour), CRT scanlines, neon edges (source/white/rainbow-by-direction), topographic contours, bloom
   - Find/replace
   - Structural: echo, move, carve, row jitter, stutter, slice/block shuffle
   - Manual chunk: move/echo/carve/rotate/reverse
@@ -49,7 +51,7 @@ Keys: `R` random · `V` variations · hold `\` for source · `Ctrl+Z` / `Ctrl+Sh
 ```
 index.html  styles.css  main.js        app shell + wiring
 engine/     util.js  bmp.js  jpeg.js   byte helpers, BMP codec + decode-as, JPEG scan/marker safety
-            effects.js  audio.js       effect registry (param schemas drive UI, random, recipes)
+            effects.js  audio.js  art.js  effect registry (param schemas drive UI, random, recipes)
             pipeline.js                regions, selection compositing, cached replay, recipes
 ui/         panel.js  stack.js  hex.js  selection.js  variations.js  terrain.js
 test/       engine.test.mjs            node test/engine.test.mjs
