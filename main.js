@@ -453,3 +453,56 @@ window.addEventListener('keyup', e => { if (e.key === '\\') setAB(false); });
   if (narrow.addEventListener) narrow.addEventListener('change', update);
   mini.addEventListener('click', () => scope.scrollIntoView({ behavior: 'smooth', block: 'start' }));
 })();
+
+// ── Phone layout: rack sections become tabs under the image ─────────────────
+// Below 960 px everything stacks in one column, so the Stack, Container, each
+// effect group and the Raw feed become tabs right under the image and its buttons.
+(function rackTabs() {
+  const mq = matchMedia('(max-width: 960px)');
+  const hexwrap = $('hexwrap');
+  // Tab name = the summary's own text (without the dot and the grey key words).
+  const nameOf = d => {
+    const sum = d.querySelector(':scope > summary');
+    const txt = sum ? [...sum.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join(' ').trim() : '';
+    return txt || 'Section';
+  };
+  const secs = [...document.querySelectorAll('#rack > details.mod, #fxRack > details.mod')].map(d => ({ el: d, name: nameOf(d) }));
+  secs.push({ el: hexwrap, name: 'Raw feed' });
+  const bar = document.createElement('nav');
+  bar.id = 'tabbar'; bar.setAttribute('role', 'tablist'); bar.setAttribute('aria-label', 'Panels');
+  const rackEl = $('rack'), leftcol = hexwrap.parentNode;
+  rackEl.prepend(bar);
+  secs.forEach((s, i) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'tab'; b.textContent = s.name; b.setAttribute('role', 'tab');
+    b.addEventListener('click', () => select(i));
+    bar.appendChild(b); s.btn = b;
+  });
+  let cur = 0;
+  try { const v = +localStorage.getItem('databender.tab'); if (v >= 0 && v < secs.length) cur = v; } catch (_) {}
+  function select(i, scroll = true) {
+    cur = i;
+    secs.forEach((s, j) => {
+      const on = j === i;
+      s.btn.classList.toggle('sel', on); s.btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      s.el.classList.toggle('tabon', on);
+      if (on && s.el.tagName === 'DETAILS') s.el.open = true;
+    });
+    if (scroll) {
+      secs[i].btn.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+      if (bar.getBoundingClientRect().top < 0) bar.scrollIntoView({ block: 'start' });
+    }
+    try { localStorage.setItem('databender.tab', String(i)); } catch (_) {}
+  }
+  // Raw feed only exists once an image is loaded.
+  const syncHex = () => { const s = secs[secs.length - 1]; s.btn.hidden = hexwrap.hidden; if (hexwrap.hidden && cur === secs.length - 1) select(0, false); };
+  new MutationObserver(syncHex).observe(hexwrap, { attributes: true, attributeFilter: ['hidden'] });
+  // The tab bar sticks to the top while a long panel scrolls, so it lives in the
+  // rack; the Raw feed panel moves next to it in tab mode and back on desktop.
+  const apply = () => {
+    document.body.classList.toggle('tabbed', mq.matches);
+    if (mq.matches) bar.after(hexwrap); else leftcol.appendChild(hexwrap);
+  };
+  if (mq.addEventListener) mq.addEventListener('change', apply); else mq.addListener(apply);
+  select(cur, false); syncHex(); apply();
+})();
