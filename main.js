@@ -11,7 +11,7 @@ import { createTerrain } from './ui/terrain.js';
 import { createSelection } from './ui/selection.js';
 import { createVariations } from './ui/variations.js';
 
-export const VERSION = '2.1.0';
+export const VERSION = '2.2.0';
 const MAXDIM = 1200, UNDO_CAP = 100;
 const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d', { willReadFrequently: true });
@@ -423,3 +423,33 @@ window.addEventListener('keydown', e => {
   else if (e.key === 'Escape') { if (S.edit >= 0) stopEdit(); else if (S.sel) { S.sel = null; selection.set(null); renderUI(); } }
 });
 window.addEventListener('keyup', e => { if (e.key === '\\') setAB(false); });
+
+// ── Mobile: pinned mini preview ─────────────────────────────────────────────
+// On narrow screens the effects rack sits far below the image, so once the
+// image scrolls out of view a small live copy stays in the corner. Tap it to
+// jump back up.
+(function miniPreview() {
+  const scope = $('scope'), narrow = matchMedia('(max-width: 960px)');
+  const mini = document.createElement('button');
+  mini.id = 'miniPrev'; mini.type = 'button'; mini.hidden = true;
+  mini.title = 'Back to image'; mini.setAttribute('aria-label', 'Scroll back to the image');
+  const mc = document.createElement('canvas'), mctx = mc.getContext('2d');
+  mini.appendChild(mc); document.body.appendChild(mini);
+  let inView = true, timer = 0;
+  const draw = () => {
+    if (cv.hidden || cv.width < 2 || cv.height < 2) return;
+    const s = 96 / Math.max(cv.width, cv.height);
+    const w = Math.max(1, Math.round(cv.width * s)), h = Math.max(1, Math.round(cv.height * s));
+    if (mc.width !== w || mc.height !== h) { mc.width = w; mc.height = h; }
+    mctx.drawImage(cv, 0, 0, w, h);
+  };
+  const update = () => {
+    const show = narrow.matches && !inView && !cv.hidden && !document.body.classList.contains('v3');
+    mini.hidden = !show;
+    clearInterval(timer);
+    if (show) { draw(); timer = setInterval(draw, 300); }
+  };
+  new IntersectionObserver(es => { inView = es[es.length - 1].isIntersecting; update(); }, { threshold: 0.15 }).observe(scope);
+  if (narrow.addEventListener) narrow.addEventListener('change', update);
+  mini.addEventListener('click', () => scope.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+})();

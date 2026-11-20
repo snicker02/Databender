@@ -167,3 +167,28 @@ footer b{color:var(--mute)}
   color:var(--ink);font-family:var(--mono);font-size:11.5px;padding:9px 14px;border-radius:2px;opacity:0;transition:.2s;pointer-events:none;z-index:50}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ── Mobile ─────────────────────────────────────────────────────────────── */
+#miniPrev{position:fixed;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:60;padding:4px;line-height:0;
+  background:var(--panel2);border:1px solid var(--cyan);border-radius:3px;box-shadow:0 6px 24px rgba(0,0,0,.7)}
+#miniPrev canvas{display:block;max-width:96px;max-height:96px;image-rendering:pixelated}
+@media(max-width:960px){
+  body{padding:12px 12px calc(12px + env(safe-area-inset-bottom))}
+  header{gap:8px 14px}
+  h1{font-size:22px;letter-spacing:.26em}
+  .scope{min-height:220px;padding:10px}
+  .scope canvas{max-height:52vh}
+  /* hex rows are wider than a phone: scroll sideways instead of clipping */
+  .hexscroll{overflow-x:auto;font-size:11px}
+  .hexinner{width:auto;min-width:610px}
+}
+@media(pointer:coarse){
+  button,.filebtn{min-height:40px;padding:10px 12px}
+  input[type=range]{height:28px;background:transparent;margin:0}
+  input[type=range]::-webkit-slider-runnable-track{height:3px;background:var(--edge);border-radius:2px}
+  input[type=range]::-moz-range-track{height:3px;background:var(--edge);border-radius:2px}
+  input[type=range]::-webkit-slider-thumb{width:22px;height:22px;margin-top:-9.5px}
+  input[type=range]::-moz-range-thumb{width:22px;height:22px}
+  input[type=checkbox]{width:20px;height:20px}
+  select{min-height:38px}
+}

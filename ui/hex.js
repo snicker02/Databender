@@ -46,7 +46,7 @@ export function createHex(opts) {
     }
   }
 
-  inner.addEventListener('mousedown', e => {
+  inner.addEventListener('pointerdown', e => {
     const t = e.target.closest('.by'); if (!t) return;
     e.preventDefault();
     const o = +t.dataset.o;
