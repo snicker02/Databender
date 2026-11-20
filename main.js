@@ -11,7 +11,7 @@ import { createTerrain } from './ui/terrain.js';
 import { createSelection } from './ui/selection.js';
 import { createVariations } from './ui/variations.js';
 
-export const VERSION = '2.2.0';
+export const VERSION = '2.3.0';
 const MAXDIM = 1200, UNDO_CAP = 100;
 const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d', { willReadFrequently: true });
@@ -480,6 +480,7 @@ window.addEventListener('keyup', e => { if (e.key === '\\') setAB(false); });
   });
   let cur = 0;
   try { const v = +localStorage.getItem('databender.tab'); if (v >= 0 && v < secs.length) cur = v; } catch (_) {}
+  const layoutTop = () => document.querySelector('.layout').getBoundingClientRect().top;
   function select(i, scroll = true) {
     cur = i;
     secs.forEach((s, j) => {
@@ -490,7 +491,7 @@ window.addEventListener('keyup', e => { if (e.key === '\\') setAB(false); });
     });
     if (scroll) {
       secs[i].btn.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
-      if (bar.getBoundingClientRect().top < 0) bar.scrollIntoView({ block: 'start' });
+      if (bar.getBoundingClientRect().top < layoutTop()) bar.scrollIntoView({ block: 'start' });
     }
     try { localStorage.setItem('databender.tab', String(i)); } catch (_) {}
   }
@@ -499,9 +500,13 @@ window.addEventListener('keyup', e => { if (e.key === '\\') setAB(false); });
   new MutationObserver(syncHex).observe(hexwrap, { attributes: true, attributeFilter: ['hidden'] });
   // The tab bar sticks to the top while a long panel scrolls, so it lives in the
   // rack; the Raw feed panel moves next to it in tab mode and back on desktop.
+  // The image is docked: in tab mode it moves out of the scrolling column and
+  // sits above it, so scrolling the controls never scrolls the image away.
+  const scope = $('scope'), layout = document.querySelector('.layout'), footer = $('footer');
   const apply = () => {
     document.body.classList.toggle('tabbed', mq.matches);
-    if (mq.matches) bar.after(hexwrap); else leftcol.appendChild(hexwrap);
+    if (mq.matches) { bar.after(hexwrap); layout.before(scope); layout.appendChild(footer); }
+    else { leftcol.appendChild(hexwrap); leftcol.prepend(scope); layout.after(footer); }
   };
   if (mq.addEventListener) mq.addEventListener('change', apply); else mq.addListener(apply);
   select(cur, false); syncHex(); apply();
