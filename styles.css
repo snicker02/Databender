@@ -192,3 +192,18 @@ footer b{color:var(--mute)}
   input[type=checkbox]{width:20px;height:20px}
   select{min-height:38px}
 }
+
+/* ── Phone tab layout (body.tabbed, set in main.js at ≤ 960 px) ─────────── */
+#tabbar{display:none}
+body.tabbed #tabbar{display:flex;gap:6px;overflow-x:auto;position:sticky;top:0;z-index:30;margin:0 -12px 10px;padding:8px 12px;
+  background:var(--void);border-bottom:1px solid var(--edge);scrollbar-width:none}
+body.tabbed #tabbar::-webkit-scrollbar{display:none}
+#tabbar .tab{flex:none;white-space:nowrap;border-radius:999px;padding:0 14px;min-height:36px}
+#tabbar .tab.sel{border-color:var(--cyan);color:#fff;background:#10262d}
+body.tabbed #rack > details.mod, body.tabbed #fxRack > details.mod, body.tabbed #hexwrap{display:none}
+body.tabbed #rack > details.mod.tabon, body.tabbed #fxRack > details.mod.tabon{display:block}
+body.tabbed #hexwrap.tabon:not([hidden]){display:block}
+body.tabbed details.mod.tabon > summary{display:none}
+body.tabbed .rack{gap:0}
+body.tabbed.v3 #tabbar{display:none}
+
