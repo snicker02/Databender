@@ -11,7 +11,7 @@ import { createTerrain } from './ui/terrain.js';
 import { createSelection } from './ui/selection.js';
 import { createVariations } from './ui/variations.js';
 
-export const VERSION = '2.3.0';
+export const VERSION = '2.4.0';
 const MAXDIM = 1200, UNDO_CAP = 100;
 const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d', { willReadFrequently: true });
@@ -359,6 +359,22 @@ const setAB = on => { if (!S.base || S.ab === on) return; S.ab = on; scopeEl.cla
 $('btnAB').addEventListener('pointerdown', () => setAB(true));
 ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => $('btnAB').addEventListener(ev, () => setAB(false)));
 $('btnPng').addEventListener('click', () => cv.toBlob(b => download(b, stem() + '-databend.png'), 'image/png'));
+
+// ---------- shared image shelf (snicker02.github.io/shared/bridge.js) ----------
+if (window.SnickerShelf) {
+  window.SnickerShelf.mount({
+    app: 'Databender',
+    button: $('btnShelf'),
+    onImage: file => handleFile(file),
+    getImage: () => {
+      if (!S.base) throw new Error('load an image first');
+      return new Promise((res, rej) => cv.toBlob(b => (b ? res(b) : rej(new Error('encode failed'))), 'image/png'));
+    },
+    getMeta: () => ({ name: stem() + '-databend.png' }),
+  });
+} else {
+  $('btnShelf').hidden = true;
+}
 $('btnRaw').addEventListener('click', () => {
   if (!S.bytes) return;
   if (S.fmt === 'jpeg') download(new Blob([S.jsafe ? sanitizeJPEG(S.bytes, S.env.scanStart) : S.bytes], { type: 'image/jpeg' }), stem() + '-databend.jpg');
