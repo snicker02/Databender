@@ -70,3 +70,7 @@ test/       engine.test.mjs            node test/engine.test.mjs
 ```
 
 Adding an effect means appending one object to `engine/effects.js`. Its controls, stack summary, random ranges and recipe support come from that object automatically.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
